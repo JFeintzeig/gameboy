@@ -1,2 +1,2 @@
 # gameboy
-A gameboy emulator in go
+A gameboy emulator in go.
