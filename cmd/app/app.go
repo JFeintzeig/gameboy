@@ -13,15 +13,15 @@ var (
 )
 
 func init() {
-  file = flag.String("file","../gameboy_resources/gb-bootroms/bin/dmg.bin","path to file to load")
+  // file = flag.String("file","../gameboy_resources/gb-bootroms/bin/dmg.bin","path to file to load")
+  file = flag.String("file","data/Tetris (JUE) (V1.1) [!].gb","path to file to load")
 }
 
 func main() {
   flag.Parse()
 
   fmt.Println("Starting up...")
-  gb := cpu.NewGameBoy()
-  gb.LoadFile(*file)
+  gb := cpu.NewGameBoy(file)
 
   // ebiten.SetWindowSize(640, 320)
   // ebiten.SetWindowTitle("Hello, World!")
