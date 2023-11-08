@@ -14,7 +14,7 @@ var (
 
 func init() {
   // file = flag.String("file","../gameboy_resources/gb-bootroms/bin/dmg.bin","path to file to load")
-  file = flag.String("file","data/Tetris (JUE) (V1.1) [!].gb","path to file to load")
+  file = flag.String("file","data/Tetris.gb","path to file to load")
 }
 
 func main() {

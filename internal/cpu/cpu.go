@@ -8,16 +8,16 @@ import (
 
 const CLOCK_SPEED uint64 = 4.19e6
 
-type Motherboard struct {
-  cpu Cpu
-  memory [8192]byte
+type Bus struct {
+  // TODO: implement memory mapper
+  // for now i just make memory a big array for 16 bit address space
+  memory [64*1024]byte
   vram [8192]byte
   ppu Ppu
-  romFilePath *string
 }
 
-func (gb *Motherboard) LoadROM() {
-  data, err := ioutil.ReadFile(*gb.romFilePath)
+func (gb *Bus) LoadROM(romFilePath *string) {
+  data, err := ioutil.ReadFile(*romFilePath)
   if err != nil {
     log.Fatal("can't find file")
   }
@@ -25,11 +25,13 @@ func (gb *Motherboard) LoadROM() {
     log.Fatal("I can only do 32kb ROMs")
   }
   for index, element := range data {
-    gb.memory[0x100 + index] = element
+    // starts at 0x0, first 256 bytes
+    // will be overwitten by boot rom
+    gb.memory[index] = element
   }
 }
 
-func (gb *Motherboard) LoadBootROM() {
+func (gb *Bus) LoadBootROM() {
   data, err := ioutil.ReadFile("data/bootrom_dmg0.gb")
   if err != nil {
     log.Fatal("can't find boot rom")
@@ -39,59 +41,61 @@ func (gb *Motherboard) LoadBootROM() {
   }
 }
 
-func (gb *Motherboard) Execute() {
-  // TODO: execute micro-ops and make logic to choose when to advance
-  // to next byte to decode...
-  // TODO: timing
-  for i := 0; i <= 10; i++ {
-    //fmt.Printf("%x: %x, %b\n",gb.cpu.PC.read(), gb.memory[gb.cpu.PC.read()], gb.memory[gb.cpu.PC.read()])
-
-    // TODO: tricky thing i need to figure out. this function
-    // (a) decodes a new opcode
-    // (b) adds its micro-instructions to the queue
-    // (c) runs 1 micro instruction at a time for each clock cycle
-    // (c) requires persisting (a). we only want to do (b) once for each
-    // opcode, but the only way i know to persist (a) is to do it for
-    // every (c). and then i _think_ gameboy timing can do a new (a) and (b)
-    // while one (c) runs for the previous opcode, further complicating matters.
-    // how to make this logic?
-    // AND the first pass is hard -- i need oc but i dont want to increment
-    // PC right away. maybe i can prefill ExecutionQueue with a dummy
-    // instruction? janky!! maybe i can set currentOc as a value on cpu and
-    // track state somehow? dont want it to be too complicated...
-
-    fmt.Printf("%x %d\n", gb.cpu.PC.read(), gb.cpu.ExecutionQueue.Length())
-    oc := ByteToOpcode(gb.memory[gb.cpu.PC.read()])
-    fmt.Printf("Decoding %x X:%b Y:%b Z:%b P:%b Q:%b\n", oc.Full, oc.X, oc.Y, oc.Z, oc.P, oc.Q)
-
-    fmt.Printf("%x %d\n", gb.cpu.PC.read(), gb.cpu.ExecutionQueue.Length())
-    if gb.cpu.ExecutionQueue.Length() < 1 {
-      // TODO: where to do this? i need PC pointing at
-      // currently-running opcode if we are still executing
-      // its microops, b/c microops depend on op
-      fmt.Println("gonna increment PC")
-      gb.cpu.PC.inc()
-      oc = ByteToOpcode(gb.memory[gb.cpu.PC.read()])
+func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
       switch {
-      case (oc.X == 0) && (oc.Z == 1) && (oc.Q == 0):
-        fmt.Println("found it")
-        inst := gb.cpu.InstructionMap["X0Z1Q0"]
-        inst.AddOpsToQueue(&gb.cpu)
+      case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
+        inst := cpu.InstructionMap["X0Z1Q0"]
+        return &inst
       default:
         fmt.Println("not implemented")
+        return &Instruction{}
+      }
+}
+
+func (cpu *Cpu) AddOpsToQueue(inst *Instruction) {
+  for _, op := range inst.operations {
+    cpu.ExecutionQueue.Push(&op)
+  }
+}
+
+func (cpu *Cpu) FetchAndDecode() {
+    // cold start: if CurrentOp doesn't exist,
+    // don't inc PC. otherwise inc over the length of the opcode
+    if (cpu.CurrentOpcode != Opcode{}) {
+      // lookup nBytes
+      nBytes := cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes
+      for i := uint8(0); i < nBytes; i++ {
+        cpu.PC.inc()
       }
     }
+    oc := ByteToOpcode(cpu.Bus.memory[cpu.PC.read()])
+    inst := cpu.OpcodeToInstruction(oc)
+    cpu.AddOpsToQueue(inst)
+    cpu.CurrentOpcode = oc
+}
 
-    // i want to run this whether i am adding ops to the queue or not
-    // but we need _something_ in the queue to do this pop, otherwise
-    // it fails at runtime
-    // THIS IS BUGGY! LOOK AT THE PRINTS, I Step op before i should
-    // and weird stuff is happening and i dont know why
-    fmt.Printf("%x %d\n", gb.cpu.PC.read(), gb.cpu.ExecutionQueue.Length())
-    if gb.cpu.ExecutionQueue.Length() > 0 {
-      microop := gb.cpu.ExecutionQueue.Pop()
-      fmt.Printf("Executing %x\n", oc.Full)
-      (*microop)(&gb.cpu, &oc)
+func (gb *Cpu) Execute() {
+  // TODO: timing
+  for i := 0; i <= 10; i++ {
+    // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
+    //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
+    // each pass of loop takes one cycle
+    // the main loop first checks if we have something in the Queue
+    // if we do, then we execute one item from queue and return to top of loop
+    // if we don't, then we inc PC, execute FetchAndDecode, AddOpsToQueue, and thats one cycle
+    // FetchAndDecode sets cpu.CurrentOp, which is stable and used until the queue is empty
+    // at which point pc is inc'd and cpu.CurrentOp changed
+    // cold start the queue will be empty and so will currentOp
+    // we will inc PC, FetchAndDecode, AddOpsToQueue but we dont want to inc PC and can't
+    // because we don't have a currentOp
+
+    fmt.Printf("%d %x %d\n", i, gb.PC.read(), gb.ExecutionQueue.Length())
+    if gb.ExecutionQueue.Length() < 1 {
+        gb.FetchAndDecode()
+    } else {
+      microop := gb.ExecutionQueue.Pop()
+      fmt.Printf("Executing %x\n", gb.CurrentOpcode.Full)
+      (*microop)(gb)
     }
   }
 }
@@ -188,11 +192,15 @@ type Cpu struct {
   SP Register16
   clockSpeed uint64
 
+  CurrentOpcode Opcode
+
   rpTable []Register16
 
   InstructionMap map[string]Instruction
 
-  ExecutionQueue Fifo[*func(*Cpu, *Opcode)]
+  ExecutionQueue Fifo[*func(*Cpu)]
+
+  Bus Bus
 }
 
 func (cpu *Cpu) setFlagZ() {
@@ -216,16 +224,18 @@ type Ppu struct {
   screen [160*144]uint8
 }
 
-func NewGameBoy(romFilePath *string) *Motherboard {
-  cpu := Cpu{}
+func NewGameBoy(romFilePath *string) *Cpu {
+  gb := Cpu{}
  
-  cpu.clockSpeed = CLOCK_SPEED
-  cpu.rpTable = []Register16{cpu.BC, cpu.DE, cpu.HL, cpu.SP}
+  gb.clockSpeed = CLOCK_SPEED
+  gb.rpTable = []Register16{gb.BC, gb.DE, gb.HL, gb.SP}
 
-  cpu.InstructionMap = MakeInstructionMap()
+  gb.InstructionMap = MakeInstructionMap()
 
   ppu := Ppu{[160*144]uint8{}}
-  gb := Motherboard{cpu, [8192]byte{}, [8192]byte{}, ppu, romFilePath}
-  gb.LoadBootROM()
+  bus := Bus{[64*1024]byte{}, [8192]byte{}, ppu}
+  gb.Bus = bus
+  gb.Bus.LoadROM(romFilePath)
+  gb.Bus.LoadBootROM()
   return &gb
 }

@@ -29,7 +29,7 @@ func ByteToOpcode(oneByte uint8) Opcode {
 type Instruction struct {
   name string
   nBytes uint8
-  operations []func(*Cpu, *Opcode)
+  operations []func(*Cpu)
 }
 
 func (inst *Instruction) AddOpsToQueue(cpu *Cpu) {
@@ -50,14 +50,14 @@ func (inst *Instruction) AddOpsToQueue(cpu *Cpu) {
 // just like X1Y7Z2?
 
 func MakeInstructionMap() map[string]Instruction {
-  op1 := func (cpu *Cpu, op *Opcode) {
+  op1 := func (cpu *Cpu) {
     nn := cpu.ReadNN()
-    cpu.rpTable[op.P].writeLo(nn)
+    cpu.rpTable[cpu.CurrentOpcode.P].writeLo(nn)
   }
   
-  op2 := func (cpu *Cpu, op *Opcode) {
+  op2 := func (cpu *Cpu) {
     nn := cpu.ReadNN()
-    cpu.rpTable[op.P].writeHi(nn)
+    cpu.rpTable[cpu.CurrentOpcode.P].writeHi(nn)
   }
 
   instructionMap := make(map[string]Instruction)
@@ -69,7 +69,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap ["X0Z1Q0"] = Instruction{
     "LD rp[p] nn",
     3,
-    []func(*Cpu, *Opcode){op1, op2},
+    []func(*Cpu,){op1, op2},
   }
   return instructionMap
 }
