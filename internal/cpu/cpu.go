@@ -8,10 +8,27 @@ import (
 
 const CLOCK_SPEED uint64 = 4.19e6
 
+type MemoryMapper struct {
+  // is it bad to have slice of structs vs pointers to structs?
+  // https://stackoverflow.com/questions/27622083/slices-of-structs-vs-slices-of-pointers-to-structs
+  // suggests we're in a regime where it doesn't matter? let's see...
+  // pointers is doable but makes code messier and harder to track
+  // would also need to initialize
+  memory [64*1024]Register8
+}
+
+func (mm *MemoryMapper) read(address uint16) uint8 {
+  return mm.memory[address].read()
+}
+
+func (mm *MemoryMapper) write(value uint8, address uint16) {
+  mm.memory[address].write(value)
+}
+
 type Bus struct {
   // TODO: implement memory mapper
   // for now i just make memory a big array for 16 bit address space
-  memory [64*1024]byte
+  memory MemoryMapper
   vram [8192]byte
   ppu Ppu
 }
@@ -24,10 +41,10 @@ func (gb *Bus) LoadROM(romFilePath *string) {
   if len(data) != 32*1024 {
     log.Fatal("I can only do 32kb ROMs")
   }
-  for index, element := range data {
+  for address, element := range data {
     // starts at 0x0, first 256 bytes
     // will be overwitten by boot rom
-    gb.memory[index] = element
+    gb.memory.write(element, uint16(address))
   }
 }
 
@@ -36,8 +53,8 @@ func (gb *Bus) LoadBootROM() {
   if err != nil {
     log.Fatal("can't find boot rom")
   }
-  for index, element := range data {
-    gb.memory[index] = element
+  for address, element := range data {
+    gb.memory.write(element, uint16(address))
   }
 }
 
@@ -45,6 +62,9 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
       switch {
       case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
         inst := cpu.InstructionMap["X0Z1Q0"]
+        return &inst
+      case (op.X == 2):
+        inst := cpu.InstructionMap["X2"]
         return &inst
       default:
         fmt.Println("not implemented")
@@ -54,7 +74,7 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
 
 func (cpu *Cpu) AddOpsToQueue(inst *Instruction) {
   for _, op := range inst.operations {
-    cpu.ExecutionQueue.Push(&op)
+    cpu.ExecutionQueue.Push(op)
   }
 }
 
@@ -68,7 +88,7 @@ func (cpu *Cpu) FetchAndDecode() {
         cpu.PC.inc()
       }
     }
-    oc := ByteToOpcode(cpu.Bus.memory[cpu.PC.read()])
+    oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()))
     inst := cpu.OpcodeToInstruction(oc)
     cpu.AddOpsToQueue(inst)
     cpu.CurrentOpcode = oc
@@ -89,13 +109,14 @@ func (gb *Cpu) Execute() {
     // we will inc PC, FetchAndDecode, AddOpsToQueue but we dont want to inc PC and can't
     // because we don't have a currentOp
 
-    fmt.Printf("%d %x %d\n", i, gb.PC.read(), gb.ExecutionQueue.Length())
+    fmt.Printf("%d %x %d %x %x %x\n", i, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
+    fmt.Printf("%x %d %d %d %d %d\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.X, gb.CurrentOpcode.Y, gb.CurrentOpcode.Z, gb.CurrentOpcode.P, gb.CurrentOpcode.Q)
     if gb.ExecutionQueue.Length() < 1 {
         gb.FetchAndDecode()
     } else {
       microop := gb.ExecutionQueue.Pop()
       fmt.Printf("Executing %x\n", gb.CurrentOpcode.Full)
-      (*microop)(gb)
+      microop(gb)
     }
   }
 }
@@ -194,46 +215,122 @@ type Cpu struct {
 
   CurrentOpcode Opcode
 
-  rpTable []Register16
+  rpTable []*Register16
 
   InstructionMap map[string]Instruction
 
-  ExecutionQueue Fifo[*func(*Cpu)]
+  ExecutionQueue Fifo[func(*Cpu)]
 
   Bus Bus
 }
 
+// TODO: validated Z, need to validate others
+func (cpu *Cpu) getFlagZ() uint8 {
+  return (cpu.F.read() & 0b10000000) >> 7
+}
+
 func (cpu *Cpu) setFlagZ() {
+  cpu.F.write(cpu.F.read()|0b10000000)
+}
+
+func (cpu *Cpu) clearFlagZ() {
+  cpu.F.write(cpu.F.read() & 0b01111111)
+}
+
+func (cpu *Cpu) getFlagN() uint8 {
+  return (cpu.F.read() & 0b01000000) >> 6
 }
 
 func (cpu *Cpu) setFlagN() {
+  cpu.F.write(cpu.F.read()|0b01000000)
+}
+
+func (cpu *Cpu) clearFlagN() {
+  cpu.F.write(cpu.F.read() & 0b10111111)
+}
+
+func (cpu *Cpu) getFlagH() uint8 {
+  return (cpu.F.read() & 0b00100000) >> 5
 }
 
 func (cpu *Cpu) setFlagH() {
+  cpu.F.write(cpu.F.read()|0b00100000)
+}
+
+func (cpu *Cpu) clearFlagH() {
+  cpu.F.write(cpu.F.read() & 0b11011111)
+}
+
+
+func (cpu *Cpu) getFlagC() uint8 {
+  return (cpu.F.read() & 0b00010000) >> 4
 }
 
 func (cpu *Cpu) setFlagC() {
+  cpu.F.write(cpu.F.read()|0b00010000)
 }
 
-// TODO: implement ReadNN(), ReadN(), ReadD() on Cpu
+func (cpu *Cpu) clearFlagC() {
+  cpu.F.write(cpu.F.read() & 0b11101111)
+}
+
 func (cpu *Cpu) ReadNN() uint16 {
-  return 0
+  // pc is location of current opcode
+  // we want to pull 2 bytes _following_ pc
+  // without changing PC
+  // GB memory is little endian! so we switch the order here
+  return (uint16(cpu.Bus.memory.read(cpu.PC.read()+2)) << 8) | uint16(cpu.Bus.memory.read(cpu.PC.read()+1))
+}
+
+func (cpu *Cpu) ReadN() uint8 {
+  // pc is location of current opcode
+  // we want to pull byte _following_ pc
+  // without changing PC
+  return cpu.Bus.memory.read(cpu.PC.read()+1)
 }
 
 type Ppu struct {
   screen [160*144]uint8
 }
 
+// return pointer b/c some users write()/inc()/dec() the register
+func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
+  if(index > 7) {
+    panic("no register with index > 7")
+  }
+  switch index {
+  case 0:
+    return &(cpu.B)
+  case 1:
+    return &(cpu.C)
+  case 2:
+    return &(cpu.D)
+  case 3:
+    return &(cpu.E)
+  case 4:
+    return &(cpu.H)
+  case 5:
+    return &(cpu.L)
+  case 6:
+    return &(cpu.Bus.memory.memory[cpu.HL.read()])
+  case 7:
+    return &(cpu.A)
+  }
+  // should never happen
+  return new(Register8)
+}
+
 func NewGameBoy(romFilePath *string) *Cpu {
   gb := Cpu{}
  
   gb.clockSpeed = CLOCK_SPEED
-  gb.rpTable = []Register16{gb.BC, gb.DE, gb.HL, gb.SP}
+  // TODO: more verbose, but could change this to f'n with case switch
+  gb.rpTable = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.SP}
 
   gb.InstructionMap = MakeInstructionMap()
 
   ppu := Ppu{[160*144]uint8{}}
-  bus := Bus{[64*1024]byte{}, [8192]byte{}, ppu}
+  bus := Bus{MemoryMapper{}, [8192]byte{}, ppu}
   gb.Bus = bus
   gb.Bus.LoadROM(romFilePath)
   gb.Bus.LoadBootROM()
