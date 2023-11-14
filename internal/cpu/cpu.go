@@ -9,6 +9,7 @@ import (
 const CLOCK_SPEED uint64 = 4.19e6
 
 type MemoryMapper struct {
+  // TODO: memory mapping
   // is it bad to have slice of structs vs pointers to structs?
   // https://stackoverflow.com/questions/27622083/slices-of-structs-vs-slices-of-pointers-to-structs
   // suggests we're in a regime where it doesn't matter? let's see...
@@ -21,13 +22,11 @@ func (mm *MemoryMapper) read(address uint16) uint8 {
   return mm.memory[address].read()
 }
 
-func (mm *MemoryMapper) write(value uint8, address uint16) {
+func (mm *MemoryMapper) write(address uint16, value uint8) {
   mm.memory[address].write(value)
 }
 
 type Bus struct {
-  // TODO: implement memory mapper
-  // for now i just make memory a big array for 16 bit address space
   memory MemoryMapper
   vram [8192]byte
   ppu Ppu
@@ -44,7 +43,7 @@ func (gb *Bus) LoadROM(romFilePath *string) {
   for address, element := range data {
     // starts at 0x0, first 256 bytes
     // will be overwitten by boot rom
-    gb.memory.write(element, uint16(address))
+    gb.memory.write(uint16(address), element)
   }
 }
 
@@ -54,21 +53,54 @@ func (gb *Bus) LoadBootROM() {
     log.Fatal("can't find boot rom")
   }
   for address, element := range data {
-    gb.memory.write(element, uint16(address))
+    gb.memory.write(uint16(address), element)
   }
 }
 
 func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
-      switch {
-      case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
-        inst := cpu.InstructionMap["X0Z1Q0"]
+      // TODO: improve? i can go from op -> stringcode if all
+      // params are specified. if not, maybe i can fall back to
+      // fewer and fewer params to catch them all?
+      var inst Instruction
+      if op.Prefixed {
+        switch {
+          case op.X == 1:
+            inst = cpu.InstructionMap["CBX1"]
+          default:
+            fmt.Println("CB-prefixed not implemented")
+            inst = Instruction{}
+        }
         return &inst
-      case (op.X == 2):
-        inst := cpu.InstructionMap["X2"]
+      } else {
+        switch {
+        case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
+          inst = cpu.InstructionMap["X0Z1Q0"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 3) && (op.Q == 0):
+          inst = cpu.InstructionMap["X0Z2P3Q0"]
+        case (op.X == 0) && (op.Z == 4):
+          inst = cpu.InstructionMap["X0Z4"]
+        case (op.X == 0) && (op.Z == 6):
+          inst = cpu.InstructionMap["X0Z6"]
+        case (op.X == 1) && !(op.Y == 6 && op.Z == 6):
+          inst = cpu.InstructionMap["X1"]
+        case op.X == 2:
+          inst = cpu.InstructionMap["X2"]
+          return &inst
+        case (op.X == 3) && (op.Y == 4) && (op.Z == 0):
+          inst = cpu.InstructionMap["X3Y4Z0"]
+        case (op.X == 3) && (op.Y == 4) && (op.Z == 2):
+          inst = cpu.InstructionMap["X3Y4Z2"]
+        case (op.X == 3) && (op.Y == 6) && (op.Z == 3):
+          inst = cpu.InstructionMap["X3Y6Z3"]
+        case (op.X == 3) && (op.Y == 7) && (op.Z == 3):
+          inst = cpu.InstructionMap["X3Y7Z3"]
+        case (op.X == 3) && (op.Z == 5) && (op.Q == 0):
+          inst = cpu.InstructionMap["X3Z5Q0"]
+        default:
+          fmt.Println("not implemented")
+          inst = Instruction{}
+        }
         return &inst
-      default:
-        fmt.Println("not implemented")
-        return &Instruction{}
       }
 }
 
@@ -88,7 +120,18 @@ func (cpu *Cpu) FetchAndDecode() {
         cpu.PC.inc()
       }
     }
-    oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()))
+
+    oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), false)
+    // hmmm...if opcode isn't implemented, this sorta breaks because
+    // the queue stays empty, FetchAndDecode() is called again
+    // for the same PC, which reads the opcode but doesn't realize
+    // its prefixed...will this ever be a problem when all opcodes
+    // are implemented?
+    if oc.Full == 0xCB {
+      cpu.PC.inc()
+      oc = ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), true)
+    }
+
     inst := cpu.OpcodeToInstruction(oc)
     cpu.AddOpsToQueue(inst)
     cpu.CurrentOpcode = oc
@@ -96,7 +139,7 @@ func (cpu *Cpu) FetchAndDecode() {
 
 func (gb *Cpu) Execute() {
   // TODO: timing
-  for i := 0; i <= 10; i++ {
+  for i := 0; i <= 60; i++ {
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
     //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
     // each pass of loop takes one cycle
@@ -112,10 +155,12 @@ func (gb *Cpu) Execute() {
     fmt.Printf("%d %x %d %x %x %x\n", i, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
     fmt.Printf("%x %d %d %d %d %d\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.X, gb.CurrentOpcode.Y, gb.CurrentOpcode.Z, gb.CurrentOpcode.P, gb.CurrentOpcode.Q)
     if gb.ExecutionQueue.Length() < 1 {
+        // probably put this into an interrupt handler eventually
+        gb.SetIME()
         gb.FetchAndDecode()
     } else {
       microop := gb.ExecutionQueue.Pop()
-      fmt.Printf("Executing %x\n", gb.CurrentOpcode.Full)
+      fmt.Printf("Executing %x, prefixed:%t\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.Prefixed)
       microop(gb)
     }
   }
@@ -149,6 +194,14 @@ type Register16 struct {
 
 func (reg *Register16) read() uint16 {
   return (uint16(reg.hi.value) << 8) | uint16(reg.lo.value)
+}
+
+func (reg *Register16) readHi() uint8 {
+  return reg.hi.value
+}
+
+func (reg *Register16) readLo() uint8 {
+  return reg.lo.value
 }
 
 func (reg *Register16) write(value uint16) {
@@ -216,12 +269,17 @@ type Cpu struct {
   CurrentOpcode Opcode
 
   rpTable []*Register16
+  rp2Table []*Register16
 
   InstructionMap map[string]Instruction
 
   ExecutionQueue Fifo[func(*Cpu)]
 
   Bus Bus
+
+  // Interrupts, maybe encapsulate this in a handler
+  pcToSetIMEAfter uint16
+  IME uint8
 }
 
 // TODO: validated Z, need to validate others
@@ -289,6 +347,13 @@ func (cpu *Cpu) ReadN() uint8 {
   return cpu.Bus.memory.read(cpu.PC.read()+1)
 }
 
+func (cpu *Cpu) SetIME() {
+  if cpu.PC.read() > cpu.pcToSetIMEAfter {
+    cpu.IME = 0x01
+    cpu.pcToSetIMEAfter = 0xFFFF
+  }
+}
+
 type Ppu struct {
   screen [160*144]uint8
 }
@@ -326,6 +391,7 @@ func NewGameBoy(romFilePath *string) *Cpu {
   gb.clockSpeed = CLOCK_SPEED
   // TODO: more verbose, but could change this to f'n with case switch
   gb.rpTable = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.SP}
+  gb.rp2Table = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.AF}
 
   gb.InstructionMap = MakeInstructionMap()
 
