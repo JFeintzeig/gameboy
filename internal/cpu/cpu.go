@@ -73,10 +73,16 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         return &inst
       } else {
         switch {
+        case (op.X == 0) && (op.Z == 0) && (op.Y >= 4):
+          inst = cpu.InstructionMap["X0Z0Ygte4"]
         case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z1Q0"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 1) && (op.Q == 1):
+          inst = cpu.InstructionMap["X0Z2P1Q1"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 3) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z2P3Q0"]
+        case (op.X == 0) && (op.Z == 3):
+          inst = cpu.InstructionMap["X0Z3"]
         case (op.X == 0) && (op.Z == 4):
           inst = cpu.InstructionMap["X0Z4"]
         case (op.X == 0) && (op.Z == 6):
@@ -139,7 +145,7 @@ func (cpu *Cpu) FetchAndDecode() {
 
 func (gb *Cpu) Execute() {
   // TODO: timing
-  for i := 0; i <= 60; i++ {
+  for i := 0; i <= 65; i++ {
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
     //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
     // each pass of loop takes one cycle
@@ -347,6 +353,11 @@ func (cpu *Cpu) ReadN() uint8 {
   return cpu.Bus.memory.read(cpu.PC.read()+1)
 }
 
+func (cpu *Cpu) ReadD() int8 {
+  // TODO: will this work??
+  return int8(cpu.ReadN())
+}
+
 func (cpu *Cpu) SetIME() {
   if cpu.PC.read() > cpu.pcToSetIMEAfter {
     cpu.IME = 0x01
@@ -383,6 +394,23 @@ func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   }
   // should never happen
   return new(Register8)
+}
+
+func (cpu *Cpu) GetCCTableBool(index uint8) bool {
+  if index > 3 {
+    panic("cc table has no item with index > 3")
+  }
+  switch index {
+  case 0:
+    return cpu.getFlagZ() != 0x01
+  case 1:
+    return cpu.getFlagZ() == 0x01
+  case 2:
+    return cpu.getFlagC() != 0x01
+  case 3:
+    return cpu.getFlagC() == 0x01
+  }
+  return false // should never happen
 }
 
 func NewGameBoy(romFilePath *string) *Cpu {

@@ -284,5 +284,55 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x3z5q0_1,x3z5q0_2,x3z5q0_3},
   }
 
+  x3z2p1q1_1 := func (cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(cpu.DE.read()))
+  }
+
+  instructionMap["X0Z2P1Q1"] = Instruction{
+    "ld a, [de]",
+    1,
+    []func(*Cpu){x3z2p1q1_1},
+  }
+
+  // combining Q=0 and Q=1 into one function
+  x0z3_1 := func (cpu *Cpu) {
+    reg := cpu.rpTable[cpu.CurrentOpcode.P]
+    if cpu.CurrentOpcode.Q == 0 {
+      reg.inc()
+    } else if cpu.CurrentOpcode.Q == 1 {
+      reg.dec()
+    }
+  }
+
+  instructionMap["X0Z3"] = Instruction{
+    "inc rp[p]",
+    1,
+    []func(*Cpu){x0z3_1},
+  }
+
+  x0z0ygte4_1 := func (cpu *Cpu) {
+      // function to do the jump
+      x0z0ygte4_2 := func (cpu *Cpu) {
+        // TODO: does this work?? signed and unsigned
+        // confusion
+        newPC := cpu.PC.read() + uint16(cpu.ReadD())
+        cpu.PC.write(newPC)
+      }
+
+    cond := cpu.GetCCTableBool(cpu.CurrentOpcode.Y-4)
+    if (cond) {
+      // will this break shit? def. feels like
+      // crossing an encapsulation boundary at least
+      cpu.ExecutionQueue.Push(x0z0ygte4_2)
+    } else {
+      return
+    }
+  }
+
+  instructionMap["X0Z0Ygte4"] = Instruction{
+    "jr cc[y-4], d",
+    2,
+    []func(*Cpu){x0z0ygte4_1},
+  }
   return instructionMap
 }
