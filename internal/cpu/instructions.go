@@ -1,8 +1,8 @@
 package cpu
 
-//import (
+import (
 //  "fmt"
-//)
+)
 
 // Opcode is the parsed octal representation of a byte
 // https://gb-archive.github.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
@@ -38,47 +38,7 @@ type Instruction struct {
   operations []func(*Cpu)
 }
 
-func MakeInstructionMap() map[string]Instruction {
-  // the keys in this map are just my internal
-  // names based on the X/Y/Z/P/Q's we need to
-  // match on, since its a many -> one mapping
-  // of opcodes to actual exection instructions.
-  instructionMap := make(map[string]Instruction)
-
-  // X=0, Z=1, Q=0
-  x0z1q0_1 := func (cpu *Cpu) {
-    nn := cpu.ReadNN()
-    (*cpu.rpTable[cpu.CurrentOpcode.P]).writeLo(nn)
-  }
-  
-  x0z1q0_2 := func (cpu *Cpu) {
-    nn := cpu.ReadNN()
-    (*cpu.rpTable[cpu.CurrentOpcode.P]).writeHi(nn)
-  }
-
-  instructionMap["X0Z1Q0"] = Instruction{
-    "LD rp[p] nn",
-    3,
-    []func(*Cpu){x0z1q0_1, x0z1q0_2},
-  }
-
-  // X=0, Z=2, P=3, Q=0
-  x0z2q0p3_1 := func (cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.HL.read(), cpu.A.read())
-    cpu.HL.dec()
-  }
-
-  instructionMap["X0Z2P3Q0"] = Instruction {
-   "LDD (HL) A",
-   1,
-   []func(*Cpu){x0z2q0p3_1},
-  }
-
-  // X=2
-  x2_1 := func (cpu *Cpu) {
-    register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    a := cpu.A.read()
-    b := register.read()
+func (cpu *Cpu) DoAluInstruction(a uint8, b uint8) {
     var result uint8
     y := cpu.CurrentOpcode.Y
     switch y {
@@ -137,6 +97,51 @@ func MakeInstructionMap() map[string]Instruction {
       cpu.A.write(result)
     }
     return
+  }
+
+func MakeInstructionMap() map[string]Instruction {
+  // the keys in this map are just my internal
+  // names based on the X/Y/Z/P/Q's we need to
+  // match on, since its a many -> one mapping
+  // of opcodes to actual exection instructions.
+  instructionMap := make(map[string]Instruction)
+
+  // X=0, Z=1, Q=0
+  x0z1q0_1 := func (cpu *Cpu) {
+    nn := cpu.ReadNN()
+    (*cpu.rpTable[cpu.CurrentOpcode.P]).writeLo(nn)
+  }
+
+  x0z1q0_2 := func (cpu *Cpu) {
+    nn := cpu.ReadNN()
+    (*cpu.rpTable[cpu.CurrentOpcode.P]).writeHi(nn)
+  }
+
+  instructionMap["X0Z1Q0"] = Instruction{
+    "LD rp[p] nn",
+    3,
+    []func(*Cpu){x0z1q0_1, x0z1q0_2},
+  }
+
+  // X=0, Z=2, P=3, Q=0
+  x0z2q0p3_1 := func (cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.HL.read(), cpu.A.read())
+    cpu.HL.dec()
+  }
+
+  instructionMap["X0Z2P3Q0"] = Instruction {
+   "LDD (HL) A",
+   1,
+   []func(*Cpu){x0z2q0p3_1},
+  }
+
+  // X=2
+  x2_1 := func (cpu *Cpu) {
+    register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    a := cpu.A.read()
+    b := register.read()
+
+    cpu.DoAluInstruction(a, b)
   }
 
  // TODO: if instructions in same group
@@ -263,7 +268,7 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x3y4z0_1, x3y4z0_2},
   }
 
-  x3z5q0_1 := func (cpu *Cpu) {
+  no_op := func (cpu *Cpu) {
     // just taking up time
     return
   }
@@ -281,7 +286,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z5Q0"] = Instruction{
     "push rp2[p]",
     1,
-    []func(*Cpu){x3z5q0_1,x3z5q0_2,x3z5q0_3},
+    []func(*Cpu){no_op,x3z5q0_2,x3z5q0_3},
   }
 
   x3z2p1q1_1 := func (cpu *Cpu) {
@@ -317,6 +322,11 @@ func MakeInstructionMap() map[string]Instruction {
         // confusion
         newPC := cpu.PC.read() + uint16(cpu.ReadD())
         cpu.PC.write(newPC)
+        // NB: the relative jump is relative to the
+        // instruction _after_ this one. so we don't
+        // set IncrementPC to false, so FetchAndDecode
+        // will increment this by 2 before decoding
+        // the next instruction. this is super convoluted
       }
 
     cond := cpu.GetCCTableBool(cpu.CurrentOpcode.Y-4)
@@ -334,5 +344,51 @@ func MakeInstructionMap() map[string]Instruction {
     2,
     []func(*Cpu){x0z0ygte4_1},
   }
+
+  x3z6_1 := func (cpu *Cpu) {
+//    runtime.Breakpoint()
+    a := cpu.A.read()
+    b := cpu.ReadN()
+    cpu.DoAluInstruction(a, b)
+  }
+
+  instructionMap["X3Z6"] = Instruction{
+    "alu[y] n",
+    2,
+    []func(*Cpu){x3z6_1},
+  }
+
+  call_push_hi := func (cpu *Cpu) {
+    cpu.SP.dec()
+    cpu.Bus.memory.write(cpu.SP.read(), cpu.PC.readHi())
+  }
+
+  call_push_lo_and_jump := func (cpu *Cpu) {
+    cpu.SP.dec()
+    cpu.Bus.memory.write(cpu.SP.read(), cpu.PC.readLo())
+    cpu.PC.write(cpu.ReadNN())
+    cpu.IncrementPC = false
+  }
+
+  instructionMap["X3Z5P0Q1"] = Instruction{
+    "call nn",
+    3,
+    []func(*Cpu){no_op, no_op, no_op, call_push_hi, call_push_lo_and_jump},
+  }
+
+  x3z0y6_1 := func(cpu *Cpu) {
+    _ = cpu.ReadN()
+  }
+
+  x3z0y6_2 := func(cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(0xFF00 | uint16(cpu.ReadN())))
+  }
+
+  instructionMap["X3Z0Y6"] = Instruction{
+    "ld a, [0xFF00+n]",
+    2,
+    []func(*Cpu){x3z0y6_1, x3z0y6_2},
+  }
+
   return instructionMap
 }

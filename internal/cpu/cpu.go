@@ -67,7 +67,8 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           case op.X == 1:
             inst = cpu.InstructionMap["CBX1"]
           default:
-            fmt.Println("CB-prefixed not implemented")
+            err := fmt.Sprintf("CB-prefixed not implemented, instr: %v",op)
+            panic(err)
             inst = Instruction{}
         }
         return &inst
@@ -94,6 +95,8 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           return &inst
         case (op.X == 3) && (op.Y == 4) && (op.Z == 0):
           inst = cpu.InstructionMap["X3Y4Z0"]
+        case (op.X == 3) && (op.Y == 6) && (op.Z == 0):
+          inst = cpu.InstructionMap["X3Z0Y6"]
         case (op.X == 3) && (op.Y == 4) && (op.Z == 2):
           inst = cpu.InstructionMap["X3Y4Z2"]
         case (op.X == 3) && (op.Y == 6) && (op.Z == 3):
@@ -102,8 +105,13 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X3Y7Z3"]
         case (op.X == 3) && (op.Z == 5) && (op.Q == 0):
           inst = cpu.InstructionMap["X3Z5Q0"]
+        case (op.X == 3) && (op.Z == 5) && (op.P == 0) && (op.Q == 1):
+          inst = cpu.InstructionMap["X3Z5P0Q1"]
+        case (op.X == 3) && (op.Z == 6):
+          inst = cpu.InstructionMap["X3Z6"]
         default:
-          fmt.Println("not implemented")
+          err := fmt.Sprintf("not implemented, instr: %xv", op)
+          panic(err)
           inst = Instruction{}
         }
         return &inst
@@ -117,15 +125,18 @@ func (cpu *Cpu) AddOpsToQueue(inst *Instruction) {
 }
 
 func (cpu *Cpu) FetchAndDecode() {
-    // cold start: if CurrentOp doesn't exist,
-    // don't inc PC. otherwise inc over the length of the opcode
-    if (cpu.CurrentOpcode != Opcode{}) {
+    // IncrementPC is initialized as `false` (b/c we want to start at 0x0)
+    // and is also set to `false` by some instructions which set the PC
+    // internally, e.g. `call`
+    if (cpu.IncrementPC) {
       // lookup nBytes
       nBytes := cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes
       for i := uint8(0); i < nBytes; i++ {
         cpu.PC.inc()
       }
     }
+    // next time we want to increment it, unless told otherwise
+    cpu.IncrementPC = true
 
     oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), false)
     // hmmm...if opcode isn't implemented, this sorta breaks because
@@ -145,7 +156,8 @@ func (cpu *Cpu) FetchAndDecode() {
 
 func (gb *Cpu) Execute() {
   // TODO: timing
-  for i := 0; i <= 65; i++ {
+  counter := 0
+  for {
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
     //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
     // each pass of loop takes one cycle
@@ -158,8 +170,21 @@ func (gb *Cpu) Execute() {
     // we will inc PC, FetchAndDecode, AddOpsToQueue but we dont want to inc PC and can't
     // because we don't have a currentOp
 
-    fmt.Printf("%d %x %d %x %x %x\n", i, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
+    fmt.Printf("%d %x %d %x %x %x\n", counter, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
     fmt.Printf("%x %d %d %d %d %d\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.X, gb.CurrentOpcode.Y, gb.CurrentOpcode.Z, gb.CurrentOpcode.P, gb.CurrentOpcode.Q)
+    // potential alternative:
+    // - FetchAndDecode doesn't increment PC
+    // - after if statement, always pop+execute one f'n from the queue
+    // - then if queue is empty at end, increment PC before next iteration through loop
+    // * cold start will work: length is 0 and current opcode is blank, fetch+decode at 
+    //   current PC, then increment PC based on nBytes of opcode 
+    // * opcode that only takes 1 cycle will work fine: fetch+single execution stage
+    //   both occur in same iteration of loop
+    // * opcode that takes multiple cycles won't work fine: most have the fetch stage
+    //   taking 1 cycle, and i assumed that would exist outside ExecutionQueue.
+    // * opcode that jumps won't work fine b/c PC will still be incremented externally
+    // * what happens to SetIME in this scheme? b/c first if statement only happens at
+    //   cold start...
     if gb.ExecutionQueue.Length() < 1 {
         // probably put this into an interrupt handler eventually
         gb.SetIME()
@@ -169,6 +194,7 @@ func (gb *Cpu) Execute() {
       fmt.Printf("Executing %x, prefixed:%t\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.Prefixed)
       microop(gb)
     }
+    counter++
   }
 }
 
@@ -282,6 +308,8 @@ type Cpu struct {
   ExecutionQueue Fifo[func(*Cpu)]
 
   Bus Bus
+
+  IncrementPC bool
 
   // Interrupts, maybe encapsulate this in a handler
   pcToSetIMEAfter uint16
@@ -428,5 +456,10 @@ func NewGameBoy(romFilePath *string) *Cpu {
   gb.Bus = bus
   gb.Bus.LoadROM(romFilePath)
   gb.Bus.LoadBootROM()
+
+  gb.IncrementPC = false
+
+  // until video is implemented :(
+  gb.Bus.memory.write(0xFF44, 0x90)
   return &gb
 }
