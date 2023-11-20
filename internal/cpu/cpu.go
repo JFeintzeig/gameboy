@@ -4,6 +4,7 @@ import (
   "fmt"
   "io/ioutil"
   "log"
+  "runtime"
 )
 
 const CLOCK_SPEED uint64 = 4.19e6
@@ -48,7 +49,7 @@ func (gb *Bus) LoadROM(romFilePath *string) {
 }
 
 func (gb *Bus) LoadBootROM() {
-  data, err := ioutil.ReadFile("data/bootrom_dmg0.gb")
+  data, err := ioutil.ReadFile("data/bootrom_dmg.gb")
   if err != nil {
     log.Fatal("can't find boot rom")
   }
@@ -64,6 +65,8 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
       var inst Instruction
       if op.Prefixed {
         switch {
+          case op.X == 0:
+            inst = cpu.InstructionMap["CBX0"]
           case op.X == 1:
             inst = cpu.InstructionMap["CBX1"]
           default:
@@ -74,20 +77,32 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         return &inst
       } else {
         switch {
+        case (op.X == 0) && (op.Z == 0) && (op.Y == 0):
+          inst = cpu.InstructionMap["X0Z0Y0"]
         case (op.X == 0) && (op.Z == 0) && (op.Y >= 4):
           inst = cpu.InstructionMap["X0Z0Ygte4"]
         case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z1Q0"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 1) && (op.Q == 1):
           inst = cpu.InstructionMap["X0Z2P1Q1"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 2) && (op.Q == 0):
+          inst = cpu.InstructionMap["X0Z2P2Q0"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 3) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z2P3Q0"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 2) && (op.Q == 1):
+          inst = cpu.InstructionMap["X0Z2P2Q1"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 3) && (op.Q == 1):
+          inst = cpu.InstructionMap["X0Z2P3Q1"]
         case (op.X == 0) && (op.Z == 3):
           inst = cpu.InstructionMap["X0Z3"]
         case (op.X == 0) && (op.Z == 4):
           inst = cpu.InstructionMap["X0Z4"]
+        case (op.X == 0) && (op.Z == 5):
+          inst = cpu.InstructionMap["X0Z5"]
         case (op.X == 0) && (op.Z == 6):
           inst = cpu.InstructionMap["X0Z6"]
+        case (op.X == 0) && (op.Z == 7) && (op.Y == 2):
+          inst = cpu.InstructionMap["X0Z7Y2"]
         case (op.X == 1) && !(op.Y == 6 && op.Z == 6):
           inst = cpu.InstructionMap["X1"]
         case op.X == 2:
@@ -97,8 +112,14 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X3Y4Z0"]
         case (op.X == 3) && (op.Y == 6) && (op.Z == 0):
           inst = cpu.InstructionMap["X3Z0Y6"]
+        case (op.X == 3) && (op.Z == 1) && (op.P == 0) && (op.Q == 1):
+          inst = cpu.InstructionMap["X3Z1P0Q1"]
+        case (op.X == 3) && (op.Z == 1) && (op.Q == 0):
+          inst = cpu.InstructionMap["X3Z1Q0"]
         case (op.X == 3) && (op.Y == 4) && (op.Z == 2):
           inst = cpu.InstructionMap["X3Y4Z2"]
+        case (op.X == 3) && (op.Z == 3) && (op.Y == 0):
+          inst = cpu.InstructionMap["X3Z3Y0"]
         case (op.X == 3) && (op.Y == 6) && (op.Z == 3):
           inst = cpu.InstructionMap["X3Y6Z3"]
         case (op.X == 3) && (op.Y == 7) && (op.Z == 3):
@@ -176,8 +197,8 @@ func (gb *Cpu) Execute() {
     // - FetchAndDecode doesn't increment PC
     // - after if statement, always pop+execute one f'n from the queue
     // - then if queue is empty at end, increment PC before next iteration through loop
-    // * cold start will work: length is 0 and current opcode is blank, fetch+decode at 
-    //   current PC, then increment PC based on nBytes of opcode 
+    // * cold start will work: length is 0 and current opcode is blank, fetch+decode at
+    //   current PC, then increment PC based on nBytes of opcode
     // * opcode that only takes 1 cycle will work fine: fetch+single execution stage
     //   both occur in same iteration of loop
     // * opcode that takes multiple cycles won't work fine: most have the fetch stage
@@ -189,6 +210,9 @@ func (gb *Cpu) Execute() {
         // probably put this into an interrupt handler eventually
         gb.SetIME()
         gb.FetchAndDecode()
+        if gb.CurrentOpcode.Full == 0x40 {
+          runtime.Breakpoint()
+        }
     } else {
       microop := gb.ExecutionQueue.Pop()
       fmt.Printf("Executing %x, prefixed:%t\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.Prefixed)
@@ -441,7 +465,7 @@ func (cpu *Cpu) GetCCTableBool(index uint8) bool {
   return false // should never happen
 }
 
-func NewGameBoy(romFilePath *string) *Cpu {
+func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb := Cpu{}
  
   gb.clockSpeed = CLOCK_SPEED
@@ -455,11 +479,28 @@ func NewGameBoy(romFilePath *string) *Cpu {
   bus := Bus{MemoryMapper{}, [8192]byte{}, ppu}
   gb.Bus = bus
   gb.Bus.LoadROM(romFilePath)
-  gb.Bus.LoadBootROM()
 
   gb.IncrementPC = false
 
   // until video is implemented :(
   gb.Bus.memory.write(0xFF44, 0x90)
+  // is this needed?
+  // https://github.com/Gekkio/mooneye-test-suite#passfail-reporting
+  gb.Bus.memory.write(0xFF02, 0xFF)
+
+  if useBootRom {
+    gb.Bus.LoadBootROM()
+  } else {
+    gb.A.write(0x01)
+    gb.F.write(0xB0)
+    gb.B.write(0x00)
+    gb.C.write(0x13)
+    gb.D.write(0x00)
+    gb.E.write(0xD8)
+    gb.H.write(0x01)
+    gb.L.write(0x4D)
+    gb.SP.write(0xFFFE)
+    gb.PC.write(0x0100)
+  }
   return &gb
 }

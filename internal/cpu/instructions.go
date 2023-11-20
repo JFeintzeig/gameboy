@@ -2,6 +2,7 @@ package cpu
 
 import (
 //  "fmt"
+//  "runtime"
 )
 
 // Opcode is the parsed octal representation of a byte
@@ -135,6 +136,42 @@ func MakeInstructionMap() map[string]Instruction {
    []func(*Cpu){x0z2q0p3_1},
   }
 
+  // X=0, Z=2, P=2, Q=0
+  x0z2q0p2_1 := func (cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.HL.read(), cpu.A.read())
+    cpu.HL.inc()
+  }
+
+  instructionMap["X0Z2P2Q0"] = Instruction {
+   "LDI (HL) A",
+   1,
+   []func(*Cpu){x0z2q0p2_1},
+  }
+
+  // X=0, Z=2, P=3, Q=1
+  x0z2q1p3_1 := func (cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(cpu.HL.read()))
+    cpu.HL.dec()
+  }
+
+  instructionMap["X0Z2P3Q1"] = Instruction {
+   "LDD A (HL)",
+   1,
+   []func(*Cpu){x0z2q1p3_1},
+  }
+
+  // X=0, Z=2, P=2, Q=1
+  x0z2q1p2_1 := func (cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(cpu.HL.read()))
+    cpu.HL.inc()
+  }
+
+  instructionMap["X0Z2P2Q1"] = Instruction {
+   "LDI A (HL)",
+   1,
+   []func(*Cpu){x0z2q1p2_1},
+  }
+
   // X=2
   x2_1 := func (cpu *Cpu) {
     register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
@@ -167,8 +204,8 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["CBX1"] = Instruction{
-    "bit y, r[z]",
-    2,
+    "BIT y, r[z]",
+    1,
     []func(*Cpu){cbx1_1},
   }
 
@@ -191,7 +228,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Y7Z3"] = Instruction{
-    "ei",
+    "EI",
     1,
     []func(*Cpu){x3y7z3},
   }
@@ -201,7 +238,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X0Z6"] = Instruction{
-    "ld r[y], n",
+    "LD r[y], N",
     2,
     []func(*Cpu){x0z6_1},
   }
@@ -211,20 +248,9 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Y4Z2"] = Instruction{
-    "ld [0xFF00 + c], a",
+    "LD [0xFF00 + c], A",
     1,
     []func(*Cpu){x3y4z2_1},
-  }
-
-  x0z4_1 := func (cpu *Cpu) {
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
-    reg.inc()
-  }
-
-  instructionMap["X0Z4"] = Instruction{
-    "inc r[y]",
-    1,
-    []func(*Cpu){x0z4_1},
   }
 
   x3y6z3_1 := func (cpu *Cpu) {
@@ -232,7 +258,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Y6Z3"] = Instruction{
-    "di",
+    "DI",
     1,
     []func(*Cpu){x3y6z3_1},
   }
@@ -246,7 +272,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X1"] = Instruction{
-    "ld r[y] r[z]",
+    "LD r[y] r[z]",
     1,
     []func(*Cpu){x1_1},
   }
@@ -263,7 +289,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Y4Z0"] = Instruction{
-    "ld [0xFF00+u8], A",
+    "LD [0xFF00+u8], A",
     2,
     []func(*Cpu){x3y4z0_1, x3y4z0_2},
   }
@@ -284,7 +310,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Z5Q0"] = Instruction{
-    "push rp2[p]",
+    "PUSH rp2[p]",
     1,
     []func(*Cpu){no_op,x3z5q0_2,x3z5q0_3},
   }
@@ -294,7 +320,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X0Z2P1Q1"] = Instruction{
-    "ld a, [de]",
+    "LD A, [DE]",
     1,
     []func(*Cpu){x3z2p1q1_1},
   }
@@ -310,7 +336,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X0Z3"] = Instruction{
-    "inc rp[p]",
+    "INC rp[p]",
     1,
     []func(*Cpu){x0z3_1},
   }
@@ -340,13 +366,12 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X0Z0Ygte4"] = Instruction{
-    "jr cc[y-4], d",
+    "JR cc[y-4], d",
     2,
     []func(*Cpu){x0z0ygte4_1},
   }
 
   x3z6_1 := func (cpu *Cpu) {
-//    runtime.Breakpoint()
     a := cpu.A.read()
     b := cpu.ReadN()
     cpu.DoAluInstruction(a, b)
@@ -371,7 +396,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Z5P0Q1"] = Instruction{
-    "call nn",
+    "CALL NN",
     3,
     []func(*Cpu){no_op, no_op, no_op, call_push_hi, call_push_lo_and_jump},
   }
@@ -385,9 +410,199 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X3Z0Y6"] = Instruction{
-    "ld a, [0xFF00+n]",
+    "LD A, [0xFF00+n]",
     2,
     []func(*Cpu){x3z0y6_1, x3z0y6_2},
+  }
+
+  x0z5_1 := func(cpu *Cpu) {
+    //if (cpu.C.read() == 1 && cpu.E.read() == 1) {
+    //  runtime.Breakpoint()
+    //}
+    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+    reg.dec()
+    val := reg.read()
+
+    if val == 0 {
+      cpu.setFlagZ()
+    } else {
+      cpu.clearFlagZ()
+    }
+
+    cpu.setFlagN()
+
+    if ((val & 0x0f) > ((val+1) & 0x0f)) {
+      cpu.setFlagH()
+    } else {
+      cpu.clearFlagH()
+    }
+  }
+
+  instructionMap["X0Z5"] = Instruction{
+    "DEC r[y]",
+    1,
+    []func(*Cpu){x0z5_1},
+  }
+
+  x0z4_1 := func(cpu *Cpu) {
+    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+    reg.inc()
+    val := reg.read()
+
+    if val == 0 {
+      cpu.setFlagZ()
+    } else {
+      cpu.clearFlagZ()
+    }
+
+    cpu.clearFlagN()
+
+    if ((val & 0x0f) < ((val-1) & 0x0f)) {
+      cpu.setFlagH()
+    } else {
+      cpu.clearFlagH()
+    }
+  }
+
+  instructionMap["X0Z4"] = Instruction{
+    "INC r[y]",
+    1,
+    []func(*Cpu){x0z4_1},
+  }
+
+  x3z1p0q1_1 := func(cpu *Cpu) {
+    lower := cpu.Bus.memory.read(cpu.SP.read())
+    cpu.SP.inc()
+    upper := cpu.Bus.memory.read(cpu.SP.read())
+
+    cpu.PC.write(uint16(upper) << 8 | uint16(lower))
+    // we want the CPU to operate starting from this
+    // new PC, and not increment again in the Fetch loop
+    cpu.IncrementPC = false
+  }
+
+  instructionMap["X3Z1P0Q1"] = Instruction{
+    "RET",
+    1,
+    []func(*Cpu){no_op, no_op,x3z1p0q1_1},
+  }
+
+  instructionMap["X0Z0Y0"] = Instruction{
+    "NOP",
+    1,
+    []func(*Cpu){no_op},
+  }
+
+  x3z3y0_1 := func(cpu *Cpu) {
+    nn := cpu.ReadNN()
+    cpu.PC.write(nn)
+    cpu.IncrementPC = false
+  }
+
+  instructionMap["X3Z3Y0"] = Instruction{
+    "JP NN",
+    3,
+    []func(*Cpu){no_op, no_op, x3z3y0_1},
+  }
+
+  cbx0_1 := func(cpu *Cpu) {
+    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    result := reg.read()
+    y := cpu.CurrentOpcode.Y
+    var carry uint8
+    switch y {
+    case 0: // RLC
+      carry = result >> 7
+      result = (result << 1) | carry
+    case 1: // RRC
+      carry = result & 0x01
+      result = (carry << 7) | (result >> 1)
+    case 2: // RL
+      carry = result >> 7
+      result = (result << 1) | cpu.getFlagC()
+    case 3: // RR
+      carry = result & 0x1
+      result = (cpu.getFlagC() << 7) | (result >> 1)
+    case 4: // SLA
+      carry = result >> 7
+      result = result << 1
+    case 5: // SRA
+      carry = result & 0x01
+      result = (result & 0b10000000) | (result >> 1)
+    case 6: // SWAP
+      result = ((result & 0x0F) << 4) | (result >> 4)
+      carry = 0x0
+    case 7: // SRL
+      carry = result & 0x01
+      result = result >> 1
+    }
+
+    if result == 0 {
+      cpu.setFlagZ()
+    } else {
+      cpu.clearFlagZ()
+    }
+
+    cpu.clearFlagN()
+    cpu.clearFlagH()
+
+    if carry == 0x01 {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+
+    reg.write(result)
+  }
+
+  instructionMap["CBX0"] = Instruction{
+    "rot[y] r[z]",
+    1,
+    []func(*Cpu){cbx0_1},
+  }
+
+  x0z7y2_1 := func(cpu *Cpu) {
+    result := cpu.A.read()
+    carry := result >> 7
+    result = (result << 1) | cpu.getFlagC()
+
+    cpu.clearFlagZ()
+    cpu.clearFlagN()
+    cpu.clearFlagH()
+    if carry == 0x1 {
+      cpu.clearFlagC()
+    } else {
+      cpu.setFlagC()
+    }
+  }
+
+  instructionMap["X0Z7Y2"] = Instruction{
+    "RLA",
+    1,
+    []func(*Cpu){x0z7y2_1},
+  }
+
+  x3z1q0_1 := func(cpu *Cpu) {
+    // if reg is AF, it should automatically
+    // set the flags, because they
+    // are one and the same
+    reg := cpu.rpTable[cpu.CurrentOpcode.P]
+    val := cpu.Bus.memory.read(cpu.SP.read())
+    reg.lo.write(val)
+    cpu.SP.inc()
+  }
+
+  x3z1q0_2 := func(cpu *Cpu) {
+    reg := cpu.rpTable[cpu.CurrentOpcode.P]
+    val := cpu.Bus.memory.read(cpu.SP.read())
+    reg.hi.write(val)
+    cpu.SP.inc()
+  }
+
+  instructionMap["X3Z1Q0"] = Instruction{
+    "POP rp2[p]",
+    1,
+    []func(*Cpu){x3z1q0_1, x3z1q0_2},
   }
 
   return instructionMap
