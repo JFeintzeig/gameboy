@@ -243,14 +243,24 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x0z6_1},
   }
 
-  x3y4z2_1 := func (cpu *Cpu) {
+  x3z2y4_1 := func (cpu *Cpu) {
     cpu.Bus.memory.write(0xFF00 + uint16(cpu.C.read()), cpu.A.read())
   }
 
-  instructionMap["X3Y4Z2"] = Instruction{
-    "LD [0xFF00 + c], A",
+  instructionMap["X3Z2Y4"] = Instruction{
+    "LD [0xFF00 + C], A",
     1,
-    []func(*Cpu){x3y4z2_1},
+    []func(*Cpu){x3z2y4_1},
+  }
+
+  x3z2y6_1 := func (cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(0xFF00 + uint16(cpu.C.read())))
+  }
+
+  instructionMap["X3Z2Y6"] = Instruction{
+    "LD A, [0xFF00 + C]",
+    1,
+    []func(*Cpu){x3z2y6_1},
   }
 
   x3y6z3_1 := func (cpu *Cpu) {
@@ -315,14 +325,44 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){no_op,x3z5q0_2,x3z5q0_3},
   }
 
-  x3z2p1q1_1 := func (cpu *Cpu) {
+  x0z2p0q0_1 := func (cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.BC.read(), cpu.A.read())
+  }
+
+  instructionMap["X0Z2P0Q0"] = Instruction{
+    "LD [BC], A",
+    1,
+    []func(*Cpu){x0z2p0q0_1},
+  }
+
+  x0z2p1q0_1 := func (cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.DE.read(), cpu.A.read())
+  }
+
+  instructionMap["X0Z2P1Q0"] = Instruction{
+    "LD [DE], A",
+    1,
+    []func(*Cpu){x0z2p1q0_1},
+  }
+
+  x0z2p1q1_1 := func (cpu *Cpu) {
     cpu.A.write(cpu.Bus.memory.read(cpu.DE.read()))
   }
 
   instructionMap["X0Z2P1Q1"] = Instruction{
     "LD A, [DE]",
     1,
-    []func(*Cpu){x3z2p1q1_1},
+    []func(*Cpu){x0z2p1q1_1},
+  }
+
+  x0z2p0q1_1 := func (cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(cpu.BC.read()))
+  }
+
+  instructionMap["X0Z2P0Q1"] = Instruction{
+    "LD A, [BC]",
+    1,
+    []func(*Cpu){x0z2p0q1_1},
   }
 
   // combining Q=0 and Q=1 into one function
@@ -371,6 +411,24 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x0z0ygte4_1},
   }
 
+  x0z0y3_1 := func (cpu *Cpu) {
+    // TODO: does this work?? signed and unsigned
+    // confusion
+    newPC := cpu.PC.read() + uint16(cpu.ReadD())
+    cpu.PC.write(newPC)
+    // NB: the relative jump is relative to the
+    // instruction _after_ this one. so we don't
+    // set IncrementPC to false, so FetchAndDecode
+    // will increment this by 2 before decoding
+    // the next instruction. this is super convoluted
+  }
+
+  instructionMap["X0Z0Y3"] = Instruction{
+    "JR d",
+    2,
+    []func(*Cpu){no_op, x0z0y3_1},
+  }
+
   x3z6_1 := func (cpu *Cpu) {
     a := cpu.A.read()
     b := cpu.ReadN()
@@ -385,13 +443,23 @@ func MakeInstructionMap() map[string]Instruction {
 
   call_push_hi := func (cpu *Cpu) {
     cpu.SP.dec()
-    cpu.Bus.memory.write(cpu.SP.read(), cpu.PC.readHi())
+    // return to _next_ instruction
+    newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
+    cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC >> 8))
   }
 
   call_push_lo_and_jump := func (cpu *Cpu) {
     cpu.SP.dec()
-    cpu.Bus.memory.write(cpu.SP.read(), cpu.PC.readLo())
-    cpu.PC.write(cpu.ReadNN())
+    // return to _next_ instruction
+    newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
+    cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC & 0xFF))
+    if cpu.CurrentOpcode.Z == 7 {
+      // RST
+      cpu.PC.write(uint16(cpu.CurrentOpcode.Y*8))
+    } else {
+      // CALL
+      cpu.PC.write(cpu.ReadNN())
+    }
     cpu.IncrementPC = false
   }
 
@@ -399,6 +467,29 @@ func MakeInstructionMap() map[string]Instruction {
     "CALL NN",
     3,
     []func(*Cpu){no_op, no_op, no_op, call_push_hi, call_push_lo_and_jump},
+  }
+
+  x3z4ylte3_branch := func (cpu *Cpu) {
+    cond := cpu.GetCCTableBool(cpu.CurrentOpcode.Y)
+    if cond {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(call_push_hi)
+      cpu.ExecutionQueue.Push(call_push_lo_and_jump)
+    } else {
+      return
+    }
+  }
+
+  instructionMap["X3Z4Ylte3"] = Instruction{
+    "CALL cc[y] NN",
+    3,
+    []func(*Cpu){no_op, no_op, x3z4ylte3_branch},
+  }
+
+  instructionMap["X3Z7"] = Instruction{
+    "RST y*8",
+    1,
+    []func(*Cpu){no_op, call_push_hi, call_push_lo_and_jump},
   }
 
   x3z0y6_1 := func(cpu *Cpu) {
@@ -474,6 +565,7 @@ func MakeInstructionMap() map[string]Instruction {
     lower := cpu.Bus.memory.read(cpu.SP.read())
     cpu.SP.inc()
     upper := cpu.Bus.memory.read(cpu.SP.read())
+    cpu.SP.inc()
 
     cpu.PC.write(uint16(upper) << 8 | uint16(lower))
     // we want the CPU to operate starting from this
@@ -484,7 +576,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z1P0Q1"] = Instruction{
     "RET",
     1,
-    []func(*Cpu){no_op, no_op,x3z1p0q1_1},
+    []func(*Cpu){no_op, no_op, x3z1p0q1_1},
   }
 
   instructionMap["X0Z0Y0"] = Instruction{
@@ -586,14 +678,14 @@ func MakeInstructionMap() map[string]Instruction {
     // if reg is AF, it should automatically
     // set the flags, because they
     // are one and the same
-    reg := cpu.rpTable[cpu.CurrentOpcode.P]
+    reg := cpu.rp2Table[cpu.CurrentOpcode.P]
     val := cpu.Bus.memory.read(cpu.SP.read())
     reg.lo.write(val)
     cpu.SP.inc()
   }
 
   x3z1q0_2 := func(cpu *Cpu) {
-    reg := cpu.rpTable[cpu.CurrentOpcode.P]
+    reg := cpu.rp2Table[cpu.CurrentOpcode.P]
     val := cpu.Bus.memory.read(cpu.SP.read())
     reg.hi.write(val)
     cpu.SP.inc()
@@ -603,6 +695,26 @@ func MakeInstructionMap() map[string]Instruction {
     "POP rp2[p]",
     1,
     []func(*Cpu){x3z1q0_1, x3z1q0_2},
+  }
+
+  x3z2y7_1 := func(cpu *Cpu) {
+    cpu.A.write(cpu.Bus.memory.read(cpu.ReadNN()))
+  }
+
+  instructionMap["X3Z2Y7"] = Instruction{
+    "LD A, [NN]",
+    3,
+    []func(*Cpu){no_op, no_op, x3z2y7_1},
+  }
+
+  x3z2y5_1 := func(cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.ReadNN(), cpu.A.read())
+  }
+
+  instructionMap["X3Z2Y5"] = Instruction{
+    "LD [NN], A",
+    3,
+    []func(*Cpu){no_op, no_op, x3z2y5_1},
   }
 
   return instructionMap

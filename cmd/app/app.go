@@ -2,8 +2,6 @@ package main
 
 import (
   "flag"
-  "fmt"
-
   "jfeintzeig/gameboy/internal/cpu"
 )
 
@@ -19,7 +17,6 @@ func init() {
 func main() {
   flag.Parse()
 
-  fmt.Println("Starting up...")
   gb := cpu.NewGameBoy(file, false)
 
   // ebiten.SetWindowSize(640, 320)

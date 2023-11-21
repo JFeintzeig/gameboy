@@ -4,7 +4,6 @@ import (
   "fmt"
   "io/ioutil"
   "log"
-  "runtime"
 )
 
 const CLOCK_SPEED uint64 = 4.19e6
@@ -79,16 +78,24 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         switch {
         case (op.X == 0) && (op.Z == 0) && (op.Y == 0):
           inst = cpu.InstructionMap["X0Z0Y0"]
+        case (op.X == 0) && (op.Z == 0) && (op.Y == 3):
+          inst = cpu.InstructionMap["X0Z0Y3"]
         case (op.X == 0) && (op.Z == 0) && (op.Y >= 4):
           inst = cpu.InstructionMap["X0Z0Ygte4"]
         case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z1Q0"]
-        case (op.X == 0) && (op.Z == 2) && (op.P == 1) && (op.Q == 1):
-          inst = cpu.InstructionMap["X0Z2P1Q1"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 0) && (op.Q == 0):
+          inst = cpu.InstructionMap["X0Z2P0Q0"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 1) && (op.Q == 0):
+          inst = cpu.InstructionMap["X0Z2P1Q0"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 2) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z2P2Q0"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 3) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z2P3Q0"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 0) && (op.Q == 1):
+          inst = cpu.InstructionMap["X0Z2P0Q1"]
+        case (op.X == 0) && (op.Z == 2) && (op.P == 1) && (op.Q == 1):
+          inst = cpu.InstructionMap["X0Z2P1Q1"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 2) && (op.Q == 1):
           inst = cpu.InstructionMap["X0Z2P2Q1"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 3) && (op.Q == 1):
@@ -116,20 +123,30 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X3Z1P0Q1"]
         case (op.X == 3) && (op.Z == 1) && (op.Q == 0):
           inst = cpu.InstructionMap["X3Z1Q0"]
-        case (op.X == 3) && (op.Y == 4) && (op.Z == 2):
-          inst = cpu.InstructionMap["X3Y4Z2"]
+        case (op.X == 3) && (op.Z == 2) && (op.Y == 4):
+          inst = cpu.InstructionMap["X3Z2Y4"]
+        case (op.X == 3) && (op.Z == 2) && (op.Y == 5):
+          inst = cpu.InstructionMap["X3Z2Y5"]
+        case (op.X == 3) && (op.Z == 2) && (op.Y == 6):
+          inst = cpu.InstructionMap["X3Z2Y6"]
+        case (op.X == 3) && (op.Z == 2) && (op.Y == 7):
+          inst = cpu.InstructionMap["X3Z2Y7"]
         case (op.X == 3) && (op.Z == 3) && (op.Y == 0):
           inst = cpu.InstructionMap["X3Z3Y0"]
         case (op.X == 3) && (op.Y == 6) && (op.Z == 3):
           inst = cpu.InstructionMap["X3Y6Z3"]
         case (op.X == 3) && (op.Y == 7) && (op.Z == 3):
           inst = cpu.InstructionMap["X3Y7Z3"]
+        case (op.X == 3) && (op.Z == 4) && (op.P <= 3):
+          inst = cpu.InstructionMap["X3Z4Ylte3"]
         case (op.X == 3) && (op.Z == 5) && (op.Q == 0):
           inst = cpu.InstructionMap["X3Z5Q0"]
         case (op.X == 3) && (op.Z == 5) && (op.P == 0) && (op.Q == 1):
           inst = cpu.InstructionMap["X3Z5P0Q1"]
         case (op.X == 3) && (op.Z == 6):
           inst = cpu.InstructionMap["X3Z6"]
+        case (op.X == 3) && (op.Z == 7):
+          inst = cpu.InstructionMap["X3Z7"]
         default:
           err := fmt.Sprintf("not implemented, instr: %xv", op)
           panic(err)
@@ -160,6 +177,10 @@ func (cpu *Cpu) FetchAndDecode() {
     cpu.IncrementPC = true
 
     oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), false)
+
+    //gameboy doctor
+    fmt.Printf("A:%02X F:%02X B:%02X C:%02X D:%02X E:%02X H:%02X L:%02X SP:%04X PC:%04X PCMEM:%02X,%02X,%02X,%02X\n",cpu.A.read(),cpu.F.read(),cpu.B.read(),cpu.C.read(),cpu.D.read(),cpu.E.read(),cpu.H.read(),cpu.L.read(),cpu.SP.read(),cpu.PC.read(),cpu.Bus.memory.read(cpu.PC.read()),cpu.Bus.memory.read(cpu.PC.read()+1),cpu.Bus.memory.read(cpu.PC.read()+2),cpu.Bus.memory.read(cpu.PC.read()+3))
+
     // hmmm...if opcode isn't implemented, this sorta breaks because
     // the queue stays empty, FetchAndDecode() is called again
     // for the same PC, which reads the opcode but doesn't realize
@@ -191,8 +212,8 @@ func (gb *Cpu) Execute() {
     // we will inc PC, FetchAndDecode, AddOpsToQueue but we dont want to inc PC and can't
     // because we don't have a currentOp
 
-    fmt.Printf("%d %x %d %x %x %x\n", counter, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
-    fmt.Printf("%x %d %d %d %d %d\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.X, gb.CurrentOpcode.Y, gb.CurrentOpcode.Z, gb.CurrentOpcode.P, gb.CurrentOpcode.Q)
+    // fmt.Printf("%d %x %d %x %x %x\n", counter, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
+    // fmt.Printf("%x %d %d %d %d %d\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.X, gb.CurrentOpcode.Y, gb.CurrentOpcode.Z, gb.CurrentOpcode.P, gb.CurrentOpcode.Q)
     // potential alternative:
     // - FetchAndDecode doesn't increment PC
     // - after if statement, always pop+execute one f'n from the queue
@@ -210,12 +231,12 @@ func (gb *Cpu) Execute() {
         // probably put this into an interrupt handler eventually
         gb.SetIME()
         gb.FetchAndDecode()
-        if gb.CurrentOpcode.Full == 0x40 {
-          runtime.Breakpoint()
-        }
+        //if gb.CurrentOpcode.Full == 0xC9 {
+        //  runtime.Breakpoint()
+        //}
     } else {
       microop := gb.ExecutionQueue.Pop()
-      fmt.Printf("Executing %x, prefixed:%t\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.Prefixed)
+      // fmt.Printf("Executing %x, prefixed:%t\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.Prefixed)
       microop(gb)
     }
     counter++
@@ -224,7 +245,6 @@ func (gb *Cpu) Execute() {
 
 type Register8 struct {
   value uint8
-  name string
 }
 
 func (reg *Register8) read() uint8 {
@@ -244,8 +264,8 @@ func (reg *Register8) dec() {
 }
 
 type Register16 struct {
-  lo Register8
-  hi Register8
+  lo *Register8
+  hi *Register8
 }
 
 func (reg *Register16) read() uint16 {
@@ -279,10 +299,6 @@ func (reg *Register16) inc() {
 
 func (reg *Register16) dec() {
   reg.write(reg.read()-1)
-}
-
-func (reg *Register16) getName() string {
-  return reg.hi.name + reg.lo.name
 }
 
 type Fifo[T any] struct {
@@ -465,9 +481,27 @@ func (cpu *Cpu) GetCCTableBool(index uint8) bool {
   return false // should never happen
 }
 
+func NewRegister16(hi *Register8, lo *Register8) Register16 {
+  reg16 := Register16{}
+  reg16.hi = hi
+  reg16.lo = lo
+  return reg16
+}
+
 func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb := Cpu{}
- 
+
+  gb.AF = NewRegister16(&gb.A, &gb.F)
+  gb.BC = NewRegister16(&gb.B, &gb.C)
+  gb.DE = NewRegister16(&gb.D, &gb.E)
+  gb.HL = NewRegister16(&gb.H, &gb.L)
+  dummySP_S := Register8{}
+  dummySP_P := Register8{}
+  dummyPC_P := Register8{}
+  dummyPC_C := Register8{}
+  gb.SP = NewRegister16(&dummySP_S, &dummySP_P)
+  gb.PC = NewRegister16(&dummyPC_P, &dummyPC_C)
+
   gb.clockSpeed = CLOCK_SPEED
   // TODO: more verbose, but could change this to f'n with case switch
   gb.rpTable = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.SP}
