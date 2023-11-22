@@ -69,12 +69,13 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           case op.X == 1:
             inst = cpu.InstructionMap["CBX1"]
           default:
-            err := fmt.Sprintf("CB-prefixed not implemented, instr: %v",op)
+            err := fmt.Sprintf("CB-prefixed not implemented, instr: %xv",op)
             panic(err)
             inst = Instruction{}
         }
         return &inst
       } else {
+
         switch {
         case (op.X == 0) && (op.Z == 0) && (op.Y == 0):
           inst = cpu.InstructionMap["X0Z0Y0"]
@@ -84,6 +85,8 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X0Z0Ygte4"]
         case (op.X == 0) && (op.Z == 1) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z1Q0"]
+        case (op.X == 0) && (op.Z == 1) && (op.Q == 1):
+          inst = cpu.InstructionMap["X0Z1Q1"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 0) && (op.Q == 0):
           inst = cpu.InstructionMap["X0Z2P0Q0"]
         case (op.X == 0) && (op.Z == 2) && (op.P == 1) && (op.Q == 0):
@@ -108,21 +111,25 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X0Z5"]
         case (op.X == 0) && (op.Z == 6):
           inst = cpu.InstructionMap["X0Z6"]
-        case (op.X == 0) && (op.Z == 7) && (op.Y == 2):
-          inst = cpu.InstructionMap["X0Z7Y2"]
+        case (op.X == 0) && (op.Z == 7) && (op.Y <= 3):
+          inst = cpu.InstructionMap["X0Z7Ylte3"]
         case (op.X == 1) && !(op.Y == 6 && op.Z == 6):
           inst = cpu.InstructionMap["X1"]
         case op.X == 2:
           inst = cpu.InstructionMap["X2"]
           return &inst
-        case (op.X == 3) && (op.Y == 4) && (op.Z == 0):
-          inst = cpu.InstructionMap["X3Y4Z0"]
-        case (op.X == 3) && (op.Y == 6) && (op.Z == 0):
+        case (op.X == 3) && (op.Z == 0) && (op.Y <= 3):
+          inst = cpu.InstructionMap["X3Z0Ylte3"]
+        case (op.X == 3) && (op.Z == 0) && (op.Y == 4):
+          inst = cpu.InstructionMap["X3Z0Y4"]
+        case (op.X == 3) && (op.Z == 0) && (op.Y == 6):
           inst = cpu.InstructionMap["X3Z0Y6"]
-        case (op.X == 3) && (op.Z == 1) && (op.P == 0) && (op.Q == 1):
-          inst = cpu.InstructionMap["X3Z1P0Q1"]
         case (op.X == 3) && (op.Z == 1) && (op.Q == 0):
           inst = cpu.InstructionMap["X3Z1Q0"]
+        case (op.X == 3) && (op.Z == 1) && (op.Q == 1) && (op.P == 0):
+          inst = cpu.InstructionMap["X3Z1P0Q1"]
+        case (op.X == 3) && (op.Z == 1) && (op.Q == 1) && (op.P == 2):
+          inst = cpu.InstructionMap["X3Z1P2Q1"]
         case (op.X == 3) && (op.Z == 2) && (op.Y == 4):
           inst = cpu.InstructionMap["X3Z2Y4"]
         case (op.X == 3) && (op.Z == 2) && (op.Y == 5):

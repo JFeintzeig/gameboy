@@ -74,23 +74,35 @@ func (cpu *Cpu) DoAluInstruction(a uint8, b uint8) {
       cpu.clearFlagN()
     }
 
-    if (y == 0 || y == 1) && (result < a) {
-      cpu.setFlagC()
-    } else if (y == 2 || y == 3 || y == 7) && (result > a) {
-      cpu.setFlagC()
-    } else {
-      cpu.clearFlagC()
-    }
-
-    if ( y == 0 || y == 1) && ((result & 0x0f) < (a & 0x0f)) {
+    // so confusing
+    // turn to 4 bit numbers, add, see if 5th bit is set
+    if (y == 0) && (((a & 0x0F) + (b & 0x0F)) & 0x10 == 0x10) {
       cpu.setFlagH()
-    } else if (y == 2 || y == 3 || y == 7) && ((result & 0x0f) > (a & 0x0f)) {
+    // same but with carry bit too. NB: do this before changing FlagC!
+    } else if (y == 1) && (((a & 0x0F) + (b & 0x0F) + cpu.getFlagC()) & 0x10 == 0x10) {
+      cpu.setFlagH()
+    } else if (y == 2 || y == 7) && ((result & 0x0F) > (a & 0x0F)) {
+      cpu.setFlagH()
+    } else if (y == 3) && (((a & 0x0F) - (b & 0x0F) - cpu.getFlagC()) & 0x10 == 0x10) {
       cpu.setFlagH()
     } else if y == 4 {
       // really?
       cpu.setFlagH()
     } else {
       cpu.clearFlagH()
+    }
+
+    if (y == 0) && (result < a || result < b) {
+      cpu.setFlagC()
+    } else if (y == 1) && (result < a + cpu.getFlagC() || result < b + cpu.getFlagC() || a + b < a) {
+      cpu.setFlagC()
+    } else if (y == 2 || y == 7) && (result > a) {
+      cpu.setFlagC()
+    // need to also check for if b + carry _overflows_ :(
+    } else if (y == 3) && (b > a || cpu.getFlagC() > a || b + cpu.getFlagC() > a || b + cpu.getFlagC() < b) {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
     }
 
     // store result
@@ -287,21 +299,21 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x1_1},
   }
 
-  x3y4z0_1 := func (cpu *Cpu) {
+  x3z0y4_1 := func (cpu *Cpu) {
     // this is not used, we just split
     // this up to satisfy timing
     _ = cpu.ReadN()
   }
 
-  x3y4z0_2 := func (cpu *Cpu) {
+  x3z0y4_2 := func (cpu *Cpu) {
     n := cpu.ReadN()
     cpu.Bus.memory.write(0xFF00 + uint16(n), cpu.A.read())
   }
 
-  instructionMap["X3Y4Z0"] = Instruction{
+  instructionMap["X3Z0Y4"] = Instruction{
     "LD [0xFF00+u8], A",
     2,
-    []func(*Cpu){x3y4z0_1, x3y4z0_2},
+    []func(*Cpu){x3z0y4_1, x3z0y4_2},
   }
 
   no_op := func (cpu *Cpu) {
@@ -522,7 +534,7 @@ func MakeInstructionMap() map[string]Instruction {
 
     cpu.setFlagN()
 
-    if ((val & 0x0f) > ((val+1) & 0x0f)) {
+    if ((val & 0x0F) > ((val+1) & 0x0F)) {
       cpu.setFlagH()
     } else {
       cpu.clearFlagH()
@@ -548,7 +560,7 @@ func MakeInstructionMap() map[string]Instruction {
 
     cpu.clearFlagN()
 
-    if ((val & 0x0f) < ((val-1) & 0x0f)) {
+    if ((val & 0x0F) < ((val-1) & 0x0F)) {
       cpu.setFlagH()
     } else {
       cpu.clearFlagH()
@@ -561,7 +573,7 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x0z4_1},
   }
 
-  x3z1p0q1_1 := func(cpu *Cpu) {
+  ret := func(cpu *Cpu) {
     lower := cpu.Bus.memory.read(cpu.SP.read())
     cpu.SP.inc()
     upper := cpu.Bus.memory.read(cpu.SP.read())
@@ -576,7 +588,26 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z1P0Q1"] = Instruction{
     "RET",
     1,
-    []func(*Cpu){no_op, no_op, x3z1p0q1_1},
+    []func(*Cpu){no_op, no_op, ret},
+  }
+
+  x3z0ylte3_1 := func(cpu *Cpu) {
+    cond := cpu.GetCCTableBool(cpu.CurrentOpcode.Y)
+    if (cond) {
+      // will this break shit? def. feels like
+      // crossing an encapsulation boundary at least
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(ret)
+    } else {
+      return
+    }
+  }
+
+  instructionMap["X3Z0Ylte3"] = Instruction{
+    "RET cc[y]",
+    1,
+    []func(*Cpu){x3z0ylte3_1},
   }
 
   instructionMap["X0Z0Y0"] = Instruction{
@@ -595,6 +626,17 @@ func MakeInstructionMap() map[string]Instruction {
     "JP NN",
     3,
     []func(*Cpu){no_op, no_op, x3z3y0_1},
+  }
+
+  x3z1p2_1 := func(cpu *Cpu) {
+    cpu.PC.write(cpu.HL.read())
+    cpu.IncrementPC = false
+  }
+
+  instructionMap["X3Z1P2Q1"] = Instruction{
+    "JP HL",
+    1,
+    []func(*Cpu){x3z1p2_1},
   }
 
   cbx0_1 := func(cpu *Cpu) {
@@ -653,27 +695,6 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){cbx0_1},
   }
 
-  x0z7y2_1 := func(cpu *Cpu) {
-    result := cpu.A.read()
-    carry := result >> 7
-    result = (result << 1) | cpu.getFlagC()
-
-    cpu.clearFlagZ()
-    cpu.clearFlagN()
-    cpu.clearFlagH()
-    if carry == 0x1 {
-      cpu.clearFlagC()
-    } else {
-      cpu.setFlagC()
-    }
-  }
-
-  instructionMap["X0Z7Y2"] = Instruction{
-    "RLA",
-    1,
-    []func(*Cpu){x0z7y2_1},
-  }
-
   x3z1q0_1 := func(cpu *Cpu) {
     // if reg is AF, it should automatically
     // set the flags, because they
@@ -715,6 +736,73 @@ func MakeInstructionMap() map[string]Instruction {
     "LD [NN], A",
     3,
     []func(*Cpu){no_op, no_op, x3z2y5_1},
+  }
+
+  // same as the rot functions but
+  // just for A and always clear Z
+  x0z7ylte3_1 := func(cpu *Cpu) {
+    reg := &cpu.A
+    result := (*reg).read()
+    y := cpu.CurrentOpcode.Y
+    var carry uint8
+    switch y {
+    case 0: // RLCA
+      carry = result >> 7
+      result = (result << 1) | carry
+    case 1: // RRCA
+      carry = result & 0x01
+      result = (carry << 7) | (result >> 1)
+    case 2: // RLA
+      carry = result >> 7
+      result = (result << 1) | cpu.getFlagC()
+    case 3: // RRA
+      carry = result & 0x1
+      result = (cpu.getFlagC() << 7) | (result >> 1)
+    }
+
+    if carry == 0x01 {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+    cpu.clearFlagZ()
+    cpu.clearFlagN()
+    cpu.clearFlagH()
+
+    (*reg).write(result)
+  }
+
+  instructionMap["X0Z7Ylte3"] = Instruction{
+    "RLCA/RRCA/RLA/RCA",
+    1,
+    []func(*Cpu){x0z7ylte3_1},
+  }
+
+  x0z1q1_1 := func(cpu *Cpu) {
+    a := cpu.HL.read()
+    b := cpu.rpTable[cpu.CurrentOpcode.P].read()
+    result := a + b
+
+    if result < a {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+
+    if (result & 0xFFF) < (a & 0xFFF) {
+      cpu.setFlagH()
+    } else {
+      cpu.clearFlagH()
+    }
+    cpu.clearFlagN()
+
+    cpu.HL.write(result)
+  }
+
+  instructionMap["X0Z1Q1"] = Instruction{
+    "ADD HL, rp[p]",
+    1,
+    []func(*Cpu){x0z1q1_1},
   }
 
   return instructionMap
