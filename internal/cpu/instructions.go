@@ -953,6 +953,8 @@ func MakeInstructionMap() map[string]Instruction {
     result := (register.read() >> oc.Y) & 0x01
     if result == 0 {
       cpu.setFlagZ()
+    } else {
+      cpu.clearFlagZ()
     }
     cpu.clearFlagN()
     cpu.setFlagH()
