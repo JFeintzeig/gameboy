@@ -204,23 +204,6 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x2_1},
   }
 
-  cbx1_1 := func (cpu *Cpu) {
-    oc := cpu.CurrentOpcode
-    register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    result := (register.read() >> oc.Y) & 0x01
-    if result == 0 {
-      cpu.setFlagZ()
-    }
-    cpu.clearFlagN()
-    cpu.setFlagH()
-  }
-
-  instructionMap["CBX1"] = Instruction{
-    "BIT y, r[z]",
-    1,
-    []func(*Cpu){cbx1_1},
-  }
-
   x3y7z3 := func (cpu *Cpu) {
     // EI: set IME flag _after_ the following instruction
     // we write current PC to this variable
@@ -585,10 +568,24 @@ func MakeInstructionMap() map[string]Instruction {
     cpu.IncrementPC = false
   }
 
-  instructionMap["X3Z1P0Q1"] = Instruction{
+  instructionMap["X3Z1Q1P0"] = Instruction{
     "RET",
     1,
     []func(*Cpu){no_op, no_op, ret},
+  }
+
+  x3z1q1p1_1 := func(cpu *Cpu) {
+    // Set IME immediately after this instruction
+    cpu.pcToSetIMEAfter = cpu.PC.read() - 1
+    ret(cpu)
+  }
+
+  // TODO: for this and RET, timing of writes don't
+  // line up exactly
+  instructionMap["X3Z1Q1P1"] = Instruction{
+    "RETI",
+    1,
+    []func(*Cpu){no_op, no_op, x3z1q1p1_1},
   }
 
   x3z0ylte3_1 := func(cpu *Cpu) {
@@ -628,71 +625,41 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){no_op, no_op, x3z3y0_1},
   }
 
-  x3z1p2_1 := func(cpu *Cpu) {
+  x3z1q1p2_1 := func(cpu *Cpu) {
     cpu.PC.write(cpu.HL.read())
     cpu.IncrementPC = false
   }
 
-  instructionMap["X3Z1P2Q1"] = Instruction{
+  instructionMap["X3Z1Q1P2"] = Instruction{
     "JP HL",
     1,
-    []func(*Cpu){x3z1p2_1},
+    []func(*Cpu){x3z1q1p2_1},
   }
 
-  cbx0_1 := func(cpu *Cpu) {
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    result := reg.read()
-    y := cpu.CurrentOpcode.Y
-    var carry uint8
-    switch y {
-    case 0: // RLC
-      carry = result >> 7
-      result = (result << 1) | carry
-    case 1: // RRC
-      carry = result & 0x01
-      result = (carry << 7) | (result >> 1)
-    case 2: // RL
-      carry = result >> 7
-      result = (result << 1) | cpu.getFlagC()
-    case 3: // RR
-      carry = result & 0x1
-      result = (cpu.getFlagC() << 7) | (result >> 1)
-    case 4: // SLA
-      carry = result >> 7
-      result = result << 1
-    case 5: // SRA
-      carry = result & 0x01
-      result = (result & 0b10000000) | (result >> 1)
-    case 6: // SWAP
-      result = ((result & 0x0F) << 4) | (result >> 4)
-      carry = 0x0
-    case 7: // SRL
-      carry = result & 0x01
-      result = result >> 1
-    }
+  x3z2ylte3_1 := func (cpu *Cpu) {
+      // function to do the jump
+      x3z2ylte3_2 := func (cpu *Cpu) {
+        // TODO: does this work?? signed and unsigned
+        // confusion
+        newPC := cpu.ReadNN()
+        cpu.PC.write(newPC)
+        cpu.IncrementPC = false
+      }
 
-    if result == 0 {
-      cpu.setFlagZ()
+    cond := cpu.GetCCTableBool(cpu.CurrentOpcode.Y)
+    if (cond) {
+      // will this break shit? def. feels like
+      // crossing an encapsulation boundary at least
+      cpu.ExecutionQueue.Push(x3z2ylte3_2)
     } else {
-      cpu.clearFlagZ()
+      return
     }
-
-    cpu.clearFlagN()
-    cpu.clearFlagH()
-
-    if carry == 0x01 {
-      cpu.setFlagC()
-    } else {
-      cpu.clearFlagC()
-    }
-
-    reg.write(result)
   }
 
-  instructionMap["CBX0"] = Instruction{
-    "rot[y] r[z]",
-    1,
-    []func(*Cpu){cbx0_1},
+  instructionMap["X3Z2Ylte3"] = Instruction{
+    "JP cc[y], nn",
+    3,
+    []func(*Cpu){no_op, x3z2ylte3_1},
   }
 
   x3z1q0_1 := func(cpu *Cpu) {
@@ -702,6 +669,10 @@ func MakeInstructionMap() map[string]Instruction {
     reg := cpu.rp2Table[cpu.CurrentOpcode.P]
     val := cpu.Bus.memory.read(cpu.SP.read())
     reg.lo.write(val)
+    // AF: zero-out bottom nibble
+    if cpu.CurrentOpcode.P == 3 {
+      reg.lo.write(reg.lo.read() & 0xF0)
+    }
     cpu.SP.inc()
   }
 
@@ -778,6 +749,46 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x0z7ylte3_1},
   }
 
+  x0z7y5_1 := func(cpu *Cpu) {
+    cpu.A.write(^cpu.A.read())
+    cpu.setFlagN()
+    cpu.setFlagH()
+  }
+
+  instructionMap["X0Z7Y5"] = Instruction{
+    "CPL",
+    1,
+    []func(*Cpu){x0z7y5_1},
+  }
+
+  x0z7y6_1 := func(cpu *Cpu) {
+    cpu.setFlagC()
+    cpu.clearFlagN()
+    cpu.clearFlagH()
+  }
+
+  instructionMap["X0Z7Y6"] = Instruction{
+    "SCF",
+    1,
+    []func(*Cpu){x0z7y6_1},
+  }
+
+  x0z7y7_1 := func(cpu *Cpu) {
+    if cpu.getFlagC() == 0 {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+    cpu.clearFlagN()
+    cpu.clearFlagH()
+  }
+
+  instructionMap["X0Z7Y7"] = Instruction{
+    "CCF",
+    1,
+    []func(*Cpu){x0z7y7_1},
+  }
+
   x0z1q1_1 := func(cpu *Cpu) {
     a := cpu.HL.read()
     b := cpu.rpTable[cpu.CurrentOpcode.P].read()
@@ -804,6 +815,183 @@ func MakeInstructionMap() map[string]Instruction {
     1,
     []func(*Cpu){x0z1q1_1},
   }
+
+  x0z0y1_1 := func(cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.ReadNN(), cpu.SP.readLo())
+  }
+
+  x0z0y1_2 := func(cpu *Cpu) {
+    cpu.Bus.memory.write(cpu.ReadNN() + 1, cpu.SP.readHi())
+  }
+
+  instructionMap["X0Z0Y1"] = Instruction{
+    "LD (nn) SP",
+    3,
+    []func(*Cpu){no_op, no_op, x0z0y1_1, x0z0y1_2},
+  }
+
+  x0z0y2_1 := func(cpu *Cpu) {
+    panic("STOP")
+  }
+
+  instructionMap["X0Z0Y2"] = Instruction{
+    "STOP",
+    1,
+    []func(*Cpu){x0z0y2_1},
+  }
+
+  x3z1q1p3_1 := func(cpu *Cpu) {
+    cpu.SP.write(cpu.HL.read())
+  }
+
+  instructionMap["X3Z1Q1P3"] = Instruction{
+    "LD SP, HL",
+    1,
+    []func(*Cpu){x3z1q1p3_1},
+  }
+
+  x3z0y5_1 := func(cpu *Cpu) {
+    // TODO: D is signed, does this mess it up?
+    oldSP := cpu.SP.read()
+    d := uint16(cpu.ReadD())
+    cpu.SP.write(oldSP + d)
+    newSPLo := cpu.SP.readLo()
+
+    cpu.clearFlagZ()
+    cpu.clearFlagN()
+
+    if (newSPLo < uint8(d) || newSPLo < uint8(oldSP & 0xFF)) {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+
+    if (newSPLo & 0x0F) < (uint8(d) & 0x0F) {
+      cpu.setFlagH()
+    } else {
+      cpu.clearFlagH()
+    }
+  }
+
+  instructionMap["X3Z0Y5"] = Instruction{
+    "ADD SP, d",
+    2,
+    []func(*Cpu){no_op, no_op, x3z0y5_1},
+  }
+
+  x3z0y7_1 := func(cpu *Cpu) {
+    // TODO: D is signed, does this mess it up?
+    cpu.HL.write(cpu.SP.read() + uint16(cpu.ReadD()))
+  }
+
+  instructionMap["X3Z0Y7"] = Instruction{
+    "LD HL, SP + d",
+    2,
+    []func(*Cpu){no_op, x3z0y7_1},
+  }
+
+  // CB instructions
+  cbx0_1 := func(cpu *Cpu) {
+    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    result := reg.read()
+    y := cpu.CurrentOpcode.Y
+    var carry uint8
+    switch y {
+    case 0: // RLC
+      carry = result >> 7
+      result = (result << 1) | carry
+    case 1: // RRC
+      carry = result & 0x01
+      result = (carry << 7) | (result >> 1)
+    case 2: // RL
+      carry = result >> 7
+      result = (result << 1) | cpu.getFlagC()
+    case 3: // RR
+      carry = result & 0x1
+      result = (cpu.getFlagC() << 7) | (result >> 1)
+    case 4: // SLA
+      carry = result >> 7
+      result = result << 1
+    case 5: // SRA
+      carry = result & 0x01
+      result = (result & 0b10000000) | (result >> 1)
+    case 6: // SWAP
+      result = ((result & 0x0F) << 4) | (result >> 4)
+      carry = 0x0
+    case 7: // SRL
+      carry = result & 0x01
+      result = result >> 1
+    }
+
+    if result == 0 {
+      cpu.setFlagZ()
+    } else {
+      cpu.clearFlagZ()
+    }
+
+    cpu.clearFlagN()
+    cpu.clearFlagH()
+
+    if carry == 0x01 {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+
+    reg.write(result)
+  }
+
+  instructionMap["CBX0"] = Instruction{
+    "rot[y] r[z]",
+    1,
+    []func(*Cpu){cbx0_1},
+  }
+
+  cbx1_1 := func (cpu *Cpu) {
+    oc := cpu.CurrentOpcode
+    register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    result := (register.read() >> oc.Y) & 0x01
+    if result == 0 {
+      cpu.setFlagZ()
+    }
+    cpu.clearFlagN()
+    cpu.setFlagH()
+  }
+
+  instructionMap["CBX1"] = Instruction{
+    "BIT y, r[z]",
+    1,
+    []func(*Cpu){cbx1_1},
+  }
+
+  cbx2_1 := func(cpu *Cpu) {
+    y := cpu.CurrentOpcode.Y
+    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    // make a mask with all 0's and a single 1 in the yth
+    // place, then take complement
+    reg.write(reg.read() & ^(0x1 << y))
+  }
+
+  instructionMap["CBX2"] = Instruction{
+    "RES y, r[z]",
+    1,
+    []func(*Cpu){cbx2_1},
+  }
+
+  cbx3_1 := func(cpu *Cpu) {
+    y := cpu.CurrentOpcode.Y
+    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    // make a mask with all 0's and a single 1 in the yth
+    // place, then OR it with reg
+    reg.write(reg.read() | (0x1 << y))
+  }
+
+  instructionMap["CBX3"] = Instruction{
+    "SET y, r[z]",
+    1,
+    []func(*Cpu){cbx3_1},
+  }
+
 
   return instructionMap
 }
