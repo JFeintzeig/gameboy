@@ -10,11 +10,6 @@ const CLOCK_SPEED uint64 = 4.19e6
 
 type MemoryMapper struct {
   // TODO: memory mapping
-  // is it bad to have slice of structs vs pointers to structs?
-  // https://stackoverflow.com/questions/27622083/slices-of-structs-vs-slices-of-pointers-to-structs
-  // suggests we're in a regime where it doesn't matter? let's see...
-  // pointers is doable but makes code messier and harder to track
-  // would also need to initialize
   memory [64*1024]Register8
 }
 
@@ -47,6 +42,7 @@ func (gb *Bus) LoadROM(romFilePath *string) {
   }
 }
 
+// TODO: somehow need to unmap this after the BootROM finishes
 func (gb *Bus) LoadBootROM() {
   data, err := ioutil.ReadFile("data/bootrom_dmg.gb")
   if err != nil {
@@ -245,8 +241,6 @@ func (gb *Cpu) Execute() {
     // we will inc PC, FetchAndDecode, AddOpsToQueue but we dont want to inc PC and can't
     // because we don't have a currentOp
 
-    // fmt.Printf("%d %x %d %x %x %x\n", counter, gb.PC.read(), gb.ExecutionQueue.Length(), gb.SP.read(), gb.getFlagZ(), gb.F.read())
-    // fmt.Printf("%x %d %d %d %d %d\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.X, gb.CurrentOpcode.Y, gb.CurrentOpcode.Z, gb.CurrentOpcode.P, gb.CurrentOpcode.Q)
     // potential alternative:
     // - FetchAndDecode doesn't increment PC
     // - after if statement, always pop+execute one f'n from the queue
@@ -264,12 +258,8 @@ func (gb *Cpu) Execute() {
         // probably put this into an interrupt handler eventually
         gb.SetIME()
         gb.FetchAndDecode()
-        //if gb.CurrentOpcode.Full == 0xC9 {
-        //  runtime.Breakpoint()
-        //}
     } else {
       microop := gb.ExecutionQueue.Pop()
-      // fmt.Printf("Executing %x, prefixed:%t\n", gb.CurrentOpcode.Full, gb.CurrentOpcode.Prefixed)
       microop(gb)
     }
     counter++
@@ -389,7 +379,6 @@ type Cpu struct {
   IME uint8
 }
 
-// TODO: validated Z, need to validate others
 func (cpu *Cpu) getFlagZ() uint8 {
   return (cpu.F.read() & 0b10000000) >> 7
 }
@@ -455,7 +444,6 @@ func (cpu *Cpu) ReadN() uint8 {
 }
 
 func (cpu *Cpu) ReadD() int8 {
-  // TODO: will this work??
   return int8(cpu.ReadN())
 }
 
@@ -470,7 +458,6 @@ type Ppu struct {
   screen [160*144]uint8
 }
 
-// return pointer b/c some users write()/inc()/dec() the register
 func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   if(index > 7) {
     panic("no register with index > 7")
@@ -493,8 +480,7 @@ func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   case 7:
     return &(cpu.A)
   }
-  // should never happen
-  return new(Register8)
+  return new(Register8) // should never happen
 }
 
 func (cpu *Cpu) GetCCTableBool(index uint8) bool {
@@ -536,10 +522,8 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.PC = NewRegister16(&dummyPC_P, &dummyPC_C)
 
   gb.clockSpeed = CLOCK_SPEED
-  // TODO: more verbose, but could change this to f'n with case switch
   gb.rpTable = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.SP}
   gb.rp2Table = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.AF}
-
   gb.InstructionMap = MakeInstructionMap()
 
   ppu := Ppu{[160*144]uint8{}}

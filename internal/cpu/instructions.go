@@ -2,7 +2,6 @@ package cpu
 
 import (
 //  "fmt"
-//  "runtime"
 )
 
 // Opcode is the parsed octal representation of a byte
@@ -502,9 +501,6 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z5_1 := func(cpu *Cpu) {
-    //if (cpu.C.read() == 1 && cpu.E.read() == 1) {
-    //  runtime.Breakpoint()
-    //}
     reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
     reg.dec()
     val := reg.read()
