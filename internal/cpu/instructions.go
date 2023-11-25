@@ -881,7 +881,23 @@ func MakeInstructionMap() map[string]Instruction {
 
   x3z0y7_1 := func(cpu *Cpu) {
     // TODO: D is signed, does this mess it up?
-    cpu.HL.write(cpu.SP.read() + uint16(cpu.ReadD()))
+    sp := cpu.SP.read()
+    d := uint16(cpu.ReadD())
+    result := sp + d
+    cpu.HL.write(result)
+
+    cpu.clearFlagZ()
+    cpu.clearFlagN()
+    if (result & 0xFF) < (sp & 0xFF) || (result & 0xFF) < (d & 0xFF) {
+      cpu.setFlagC()
+    } else {
+      cpu.clearFlagC()
+    }
+    if (result & 0x0F) < (sp & 0x0F) || (result & 0x0F) < (d & 0x0F) {
+      cpu.setFlagH()
+    } else {
+      cpu.clearFlagH()
+    }
   }
 
   instructionMap["X3Z0Y7"] = Instruction{
