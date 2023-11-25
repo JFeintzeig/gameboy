@@ -121,6 +121,8 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X0Z6"]
         case (op.X == 0) && (op.Z == 7) && (op.Y <= 3):
           inst = cpu.InstructionMap["X0Z7Ylte3"]
+        case (op.X == 0) && (op.Z == 7) && (op.Y == 4):
+          inst = cpu.InstructionMap["X0Z7Y4"]
         case (op.X == 0) && (op.Z == 7) && (op.Y == 5):
           inst = cpu.InstructionMap["X0Z7Y5"]
         case (op.X == 0) && (op.Z == 7) && (op.Y == 6):

@@ -890,6 +890,56 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){no_op, x3z0y7_1},
   }
 
+  // https://blog.ollien.com/posts/gb-daa/
+  // TODO: still some issues, maybe with H already set?
+  // also do i need to do subtraction??
+  x0z7y4_1 := func(cpu *Cpu) {
+    a := cpu.A.read()
+    halfCarry := false
+    if cpu.getFlagN() == 0 {
+      if (a&0x0F) > 0x09 {
+        a += 0x06
+        halfCarry = true
+      } else if cpu.getFlagH() == 1 {
+        // we are not overflowing bottom digit here
+        // so don't set halfCarry
+        a += 0x06
+      }
+
+      // if bottom digit carries and top digit is 0, that
+      // means we overflowed the whole thing
+      // also if C was set, we already overflowed so need to add 0x60
+      if ((a & 0xF0) > 0x90) || ((a & 0xF0) == 0 && halfCarry) || cpu.getFlagC() == 1 {
+        a += 0x60
+        cpu.setFlagC()
+      } else {
+        cpu.clearFlagC()
+      }
+    } else {
+      if cpu.getFlagC() == 1 {
+        a -= 0x60
+      }
+      if cpu.getFlagH() == 1 {
+        a -= 0x06
+      }
+    }
+
+    cpu.clearFlagH()
+    if a == 0 {
+      cpu.setFlagZ()
+    } else {
+      cpu.clearFlagZ()
+    }
+
+    cpu.A.write(a)
+  }
+
+  instructionMap["X0Z7Y4"] = Instruction{
+    "DAA",
+    1,
+    []func(*Cpu){x0z7y4_1},
+  }
+
   // CB instructions
   cbx0_1 := func(cpu *Cpu) {
     reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
@@ -993,7 +1043,6 @@ func MakeInstructionMap() map[string]Instruction {
     1,
     []func(*Cpu){cbx3_1},
   }
-
 
   return instructionMap
 }
