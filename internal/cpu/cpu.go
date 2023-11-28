@@ -1,6 +1,7 @@
 package cpu
 
 import (
+  "encoding/hex"
   "fmt"
   "io/ioutil"
   "log"
@@ -8,8 +9,10 @@ import (
 
 const CLOCK_SPEED uint64 = 4.19e6
 
+// TODO: get rid of all this in lieu of Bus
 type MemoryMapper struct {
-  // TODO: memory mapping
+  bus Mediator
+
   memory [64*1024]Register8
 }
 
@@ -21,10 +24,144 @@ func (mm *MemoryMapper) write(address uint16, value uint8) {
   mm.memory[address].write(value)
 }
 
+// timers
+// div: needs to track # of cycles, needs to be able to be
+//      called by cpu (eg stop), any write writes 00, writes
+//      also impact timer somehow?
+// tima: needs to track # of cycles, needs to access TMA, needs
+//       to access TAC, needs to fire interrupts. NB it assumes
+//       value of TMA one cycle _after_ overflow, with 0 in between,
+//       so somehow needs to track this, and also send delayed interrupt
+//       writing to TIMA in off cycle after overflow prevents interrupt,
+//       and writing to TIMA the _next_ cycle will be ignored
+// tma: needs to be writable, if written same cycle as TIMA overflow,
+//      old value used for TIMA
+// tac: needs to be readable by TIMA, needs to be able to increment
+//      TIMA based on change of its own state
+
+// somehow need state machine that knows each time CPU cycle goes by,
+// and also can broker reads/writes from memory at these locations
+// maybe every cycle cpu ticks Timers, timers do internal brokering among themselves,
+// which they can do by tracking their state and having access to their methods/vars,
+// but they need to be able to write to interrupt memory AND they need to be able to
+// be read-writable by CPU
+
+// how will this write to interrupt register?
+type Timers struct {
+  bus Mediator
+
+  div Register8
+  tima SpecialRegister8 // writes the cycle after overflow prohibitied
+  tma Register8
+
+  divCounter uint16
+  // TODO: TAC writing function
+  // must update these
+  // TODO: initialize?
+  timaMask uint16
+  timaEnabled bool
+  justOverflowed bool
+}
+
+func (t *Timers) writeTAC(value uint8) {
+  // select bit 2
+  t.timaEnabled = (value & 0x04) == 4
+  switch (value & 0x03) {
+    case 0x00:
+      t.timaMask = 1023
+    case 0x01:
+      t.timaMask = 15
+    case 0x02:
+      t.timaMask = 63
+    case 0x03:
+      t.timaMask = 255
+  }
+}
+
+func (t *Timers) readTAC() uint8 {
+  return 0
+}
+
+func (t *Timers) readDiv() uint8 {
+ // return 8 MSB of divCounter
+ return 0
+}
+
+// TODO: implement STOP instruction
+func (t *Timers) writeDiv(value uint8) {
+  // write 0x00 and deal with edge cases
+}
+
+// TODO: this needs to be run _before_ any CPU instr
+// execution in the Execute loop
+// TODO: other weird edge cases w/writing to DIV or TAC
+func (t *Timers) doCycle() {
+  t.divCounter += 1
+
+  // fire interrupt + reset TIMA the cycle after it overflowed
+  // TODO: what about if TMA is updated? pandos contradict itself
+  if t.justOverflowed {
+    if (t.divCounter & 0x03) == 0x01 {
+      interruptFlags := t.bus.ReadFromBus(0xFF0F)
+      interruptFlags |= 0x4
+      t.bus.WriteToBus(0xFF0F, interruptFlags)
+
+      t.tima.write(t.tma.read())
+    }
+
+    // TODO: use this flag to prevent the cpu
+    // from writing to tima during this cycle
+    if (t.divCounter & 0x03) == 0x02 {
+      t.justOverflowed = false
+    }
+  }
+
+  if (t.divCounter & t.timaMask) == 0  && t.timaEnabled {
+    t.tima.inc()
+    if t.tima.read() == 0x0 {
+      t.justOverflowed = true
+    }
+  }
+}
+
+type Mediator interface {
+  ReadFromBus(uint16) uint8
+  WriteToBus(uint16, uint8)
+}
+
 type Bus struct {
   memory MemoryMapper
   vram [8192]byte
   ppu Ppu
+  timers Timers
+}
+
+func (bus *Bus) ReadFromBus(address uint16) uint8 {
+  if address == 0xFF04 {
+    return bus.timers.readDiv()
+  } else if address == 0xFF05 {
+    return bus.timers.tima.read()
+  } else if address == 0xFF06 {
+    return bus.timers.tma.read()
+  } else if address == 0xFF07 {
+    return bus.timers.readTAC()
+  } else {
+    return bus.memory.read(address)
+  }
+}
+
+func (bus *Bus) WriteToBus(address uint16, value uint8) {
+  if address == 0xFF04 {
+    bus.timers.writeDiv(value)
+  } else if address == 0xFF05 {
+    bus.timers.tima.write(value)
+  } else if address == 0xFF06 {
+    bus.timers.tma.write(value)
+  } else if address == 0xFF07 {
+    bus.timers.writeTAC(value)
+  } else {
+    bus.memory.write(address, value)
+  }
 }
 
 func (gb *Bus) LoadROM(romFilePath *string) {
@@ -43,6 +180,8 @@ func (gb *Bus) LoadROM(romFilePath *string) {
 }
 
 // TODO: somehow need to unmap this after the BootROM finishes
+// monitor FF50 and then reload game cartridge?
+// https://gbdev.io/pandocs/Memory_Map.html#io-ranges
 func (gb *Bus) LoadBootROM() {
   data, err := ioutil.ReadFile("data/bootrom_dmg.gb")
   if err != nil {
@@ -208,7 +347,7 @@ func (cpu *Cpu) FetchAndDecode() {
     oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), false)
 
     //gameboy doctor
-    fmt.Printf("A:%02X F:%02X B:%02X C:%02X D:%02X E:%02X H:%02X L:%02X SP:%04X PC:%04X PCMEM:%02X,%02X,%02X,%02X\n",cpu.A.read(),cpu.F.read(),cpu.B.read(),cpu.C.read(),cpu.D.read(),cpu.E.read(),cpu.H.read(),cpu.L.read(),cpu.SP.read(),cpu.PC.read(),cpu.Bus.memory.read(cpu.PC.read()),cpu.Bus.memory.read(cpu.PC.read()+1),cpu.Bus.memory.read(cpu.PC.read()+2),cpu.Bus.memory.read(cpu.PC.read()+3))
+    //fmt.Printf("A:%02X F:%02X B:%02X C:%02X D:%02X E:%02X H:%02X L:%02X SP:%04X PC:%04X PCMEM:%02X,%02X,%02X,%02X\n",cpu.A.read(),cpu.F.read(),cpu.B.read(),cpu.C.read(),cpu.D.read(),cpu.E.read(),cpu.H.read(),cpu.L.read(),cpu.SP.read(),cpu.PC.read(),cpu.Bus.memory.read(cpu.PC.read()),cpu.Bus.memory.read(cpu.PC.read()+1),cpu.Bus.memory.read(cpu.PC.read()+2),cpu.Bus.memory.read(cpu.PC.read()+3))
 
     // hmmm...if opcode isn't implemented, this sorta breaks because
     // the queue stays empty, FetchAndDecode() is called again
@@ -225,10 +364,71 @@ func (cpu *Cpu) FetchAndDecode() {
     cpu.CurrentOpcode = oc
 }
 
+func (cpu *Cpu) LogSerial() {
+  if cpu.Bus.memory.read(0xFF02) != 0x0 {
+    serial := cpu.Bus.memory.read(0xFF01)
+    hexString := fmt.Sprintf("%X",serial)
+    ascii, err := hex.DecodeString(hexString)
+    if err != nil {
+      fmt.Printf("\n%x\n",serial)
+    } else {
+      fmt.Printf("%s",ascii)
+    }
+    cpu.Bus.memory.write(0xFF02, 0x0)
+  }
+}
+
+// https://gbdev.io/pandocs/Interrupts.html#interrupts
+func (cpu *Cpu) DoInterrupts() {
+  if cpu.IME != 0x01 {
+    return
+  }
+
+  // hardcoded memory addresses of interrupt service routines
+  jumpFunctions := []func(*Cpu){
+    func (cpu *Cpu) {cpu.PC.write(0x40)},
+    func (cpu *Cpu) {cpu.PC.write(0x48)},
+    func (cpu *Cpu) {cpu.PC.write(0x50)},
+    func (cpu *Cpu) {cpu.PC.write(0x58)},
+    func (cpu *Cpu) {cpu.PC.write(0x60)},
+  }
+
+  interruptEnable := cpu.Bus.memory.read(0xFFFF)
+  interruptFlags := cpu.Bus.memory.read(0xFF0F)
+
+  interruptsToService := interruptFlags & interruptEnable
+
+  // priority from bit 0 -> 3
+  for _, index := range []uint8{0,1,2,3} {
+    isRequested := (interruptsToService >> index) & 0x01
+    if isRequested == 0x01 {
+      // reset flag bit
+      mask := uint8(1 << index)
+      mask = ^mask
+      cpu.Bus.memory.write(0xFF0F, interruptFlags & mask)
+      // reset IME
+      cpu.IME = 0x0
+      // push handling routine to queue
+      // 5 cycles: 2 no_op, push PC to stack, set PC to hardcoded address
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(call_push_hi)
+      cpu.ExecutionQueue.Push(call_push_lo)
+      cpu.ExecutionQueue.Push(jumpFunctions[index])
+      return
+    }
+  }
+}
+
 func (gb *Cpu) Execute() {
   // TODO: timing
   counter := 0
   for {
+    // log serial
+    gb.LogSerial()
+
+    gb.DoInterrupts()
+
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
     //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
     // each pass of loop takes one cycle
@@ -455,6 +655,8 @@ func (cpu *Cpu) SetIME() {
 }
 
 type Ppu struct {
+  bus Mediator
+
   screen [160*144]uint8
 }
 
@@ -526,8 +728,22 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.rp2Table = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.AF}
   gb.InstructionMap = MakeInstructionMap()
 
-  ppu := Ppu{[160*144]uint8{}}
-  bus := Bus{MemoryMapper{}, [8192]byte{}, ppu}
+  bus := Bus{}
+
+  ppu := Ppu{}
+  ppu.bus = &bus
+  ppu.screen = [160*144]uint8{}
+
+  mmu := MemoryMapper{}
+  mmu.bus = &bus
+
+  timers := Timers{}
+  timers.bus = &bus
+
+  bus.ppu = ppu
+  bus.memory = mmu
+  bus.timers = timers
+
   gb.Bus = bus
   gb.Bus.LoadROM(romFilePath)
 

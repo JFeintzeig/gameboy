@@ -38,6 +38,25 @@ type Instruction struct {
   operations []func(*Cpu)
 }
 
+func no_op(cpu *Cpu) {
+// just taking up time
+return
+}
+
+func call_push_hi(cpu *Cpu) {
+  cpu.SP.dec()
+  // return to _next_ instruction
+  newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
+  cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC >> 8))
+}
+
+func call_push_lo(cpu *Cpu) {
+  cpu.SP.dec()
+  // return to _next_ instruction
+  newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
+  cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC & 0xFF))
+}
+
 func (cpu *Cpu) DoAluInstruction(a uint8, b uint8) {
     var result uint8
     y := cpu.CurrentOpcode.Y
@@ -298,11 +317,6 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x3z0y4_1, x3z0y4_2},
   }
 
-  no_op := func (cpu *Cpu) {
-    // just taking up time
-    return
-  }
-
   x3z5q0_2 := func (cpu *Cpu) {
     cpu.SP.dec()
     cpu.Bus.memory.write(cpu.SP.read(), cpu.rp2Table[cpu.CurrentOpcode.P].readHi())
@@ -435,18 +449,8 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x3z6_1},
   }
 
-  call_push_hi := func (cpu *Cpu) {
-    cpu.SP.dec()
-    // return to _next_ instruction
-    newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
-    cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC >> 8))
-  }
-
   call_push_lo_and_jump := func (cpu *Cpu) {
-    cpu.SP.dec()
-    // return to _next_ instruction
-    newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
-    cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC & 0xFF))
+    call_push_lo(cpu)
     if cpu.CurrentOpcode.Z == 7 {
       // RST
       cpu.PC.write(uint16(cpu.CurrentOpcode.Y*8))
