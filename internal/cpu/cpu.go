@@ -9,62 +9,70 @@ import (
 
 const CLOCK_SPEED uint64 = 4.19e6
 
-// TODO: get rid of all this in lieu of Bus
-type MemoryMapper struct {
-  bus Mediator
-
-  memory [64*1024]Register8
-}
-
-func (mm *MemoryMapper) read(address uint16) uint8 {
-  return mm.memory[address].read()
-}
-
-func (mm *MemoryMapper) write(address uint16, value uint8) {
-  mm.memory[address].write(value)
-}
-
-// timers
-// div: needs to track # of cycles, needs to be able to be
-//      called by cpu (eg stop), any write writes 00, writes
-//      also impact timer somehow?
-// tima: needs to track # of cycles, needs to access TMA, needs
-//       to access TAC, needs to fire interrupts. NB it assumes
-//       value of TMA one cycle _after_ overflow, with 0 in between,
-//       so somehow needs to track this, and also send delayed interrupt
-//       writing to TIMA in off cycle after overflow prevents interrupt,
-//       and writing to TIMA the _next_ cycle will be ignored
-// tma: needs to be writable, if written same cycle as TIMA overflow,
-//      old value used for TIMA
-// tac: needs to be readable by TIMA, needs to be able to increment
-//      TIMA based on change of its own state
-
-// somehow need state machine that knows each time CPU cycle goes by,
-// and also can broker reads/writes from memory at these locations
-// maybe every cycle cpu ticks Timers, timers do internal brokering among themselves,
-// which they can do by tracking their state and having access to their methods/vars,
-// but they need to be able to write to interrupt memory AND they need to be able to
-// be read-writable by CPU
-
-// how will this write to interrupt register?
 type Timers struct {
   bus Mediator
 
-  div Register8
-  tima SpecialRegister8 // writes the cycle after overflow prohibitied
+  tima Register8
   tma Register8
 
   divCounter uint16
-  // TODO: TAC writing function
   // must update these
   // TODO: initialize?
   timaMask uint16
   timaEnabled bool
   justOverflowed bool
+  afterJustOverflowed bool
+}
+
+func (t *Timers) read(address uint16) uint8 {
+  if address == 0xFF04 {
+    return t.readDiv()
+  } else if address == 0xFF05 {
+    return t.tima.read()
+  } else if address == 0xFF06 {
+    return t.tma.read()
+  } else if address == 0xFF07 {
+    return t.readTAC()
+  } else {
+    panic("address not in timers")
+    // TODO: return an error?
+    return 0
+  }
+}
+
+func (t *Timers) write(address uint16, value uint8) {
+  if address == 0xFF04 {
+    t.writeDiv(value)
+  } else if address == 0xFF05 {
+    t.writeTima(value)
+  } else if address == 0xFF06 {
+    t.tma.write(value)
+  } else if address == 0xFF07 {
+    t.writeTAC(value)
+  } else {
+    panic("address not in timers")
+  }
+}
+
+func (t *Timers) readTAC() uint8 {
+  var cs uint8
+  var en uint8
+  switch t.timaMask {
+    case 1023: cs = 0x00
+    case 15: cs = 0x01
+    case 63: cs = 0x02
+    case 255: cs = 0x03
+  }
+  if t.timaEnabled {
+    en = 1
+  } else {
+    en = 0
+  }
+
+  return (cs | en << 2)
 }
 
 func (t *Timers) writeTAC(value uint8) {
-  // select bit 2
   t.timaEnabled = (value & 0x04) == 4
   switch (value & 0x03) {
     case 0x00:
@@ -78,42 +86,60 @@ func (t *Timers) writeTAC(value uint8) {
   }
 }
 
-func (t *Timers) readTAC() uint8 {
-  return 0
-}
-
 func (t *Timers) readDiv() uint8 {
- // return 8 MSB of divCounter
- return 0
+ return uint8(t.divCounter >> 8)
 }
 
-// TODO: implement STOP instruction
 func (t *Timers) writeDiv(value uint8) {
-  // write 0x00 and deal with edge cases
+  // TODO: deal with edge cases
+  // TODO: implement STOP instruction
+  // if MSB of timer changes from 1 to 0, tima increases
+  msb := t.divCounter & t.timaMask
+  switch t.timaMask {
+    case 15: msb = msb >> 3
+    case 63: msb = msb >> 5
+    case 255: msb = msb >> 7
+    case 1023: msb = msb >> 9
+  }
+
+  if t.timaEnabled && msb == 1 {
+    t.tima.inc()
+  }
+  t.divCounter = 0
 }
 
-// TODO: this needs to be run _before_ any CPU instr
-// execution in the Execute loop
+func (t *Timers) writeTima(value uint8) {
+  // prevent write during cycle [B]
+  if !t.afterJustOverflowed {
+    t.tima.write(value)
+  }
+  if t.justOverflowed {
+    // write during cycle [A] prevents interrupt flag and LD TIMA, TMA
+    t.justOverflowed = false
+  }
+}
+
 // TODO: other weird edge cases w/writing to DIV or TAC
 func (t *Timers) doCycle() {
-  t.divCounter += 1
+  //fmt.Printf("counter: %d, div: %X, tima: %X, mask: %X, enabled: %t, tma: %X, tac: %X, int: %X\n",t.divCounter, t.readDiv(), t.tima.read(), t.timaMask, t.timaEnabled, t.tma.read(), t.readTAC(), t.bus.ReadFromBus(0xFF0F))
+  t.divCounter += 4
+
+  // order of reseting vs. setting this matter, needs to be
+  // true for 1 cycle
+  if t.afterJustOverflowed {
+    t.afterJustOverflowed = false
+  }
 
   // fire interrupt + reset TIMA the cycle after it overflowed
   // TODO: what about if TMA is updated? pandos contradict itself
   if t.justOverflowed {
-    if (t.divCounter & 0x03) == 0x01 {
-      interruptFlags := t.bus.ReadFromBus(0xFF0F)
-      interruptFlags |= 0x4
-      t.bus.WriteToBus(0xFF0F, interruptFlags)
+    interruptFlags := t.bus.ReadFromBus(0xFF0F)
+    interruptFlags |= 0x4
+    t.bus.WriteToBus(0xFF0F, interruptFlags)
+    t.tima.write(t.tma.read())
 
-      t.tima.write(t.tma.read())
-    }
-
-    // TODO: use this flag to prevent the cpu
-    // from writing to tima during this cycle
-    if (t.divCounter & 0x03) == 0x02 {
-      t.justOverflowed = false
-    }
+    t.justOverflowed = false
+    t.afterJustOverflowed = true
   }
 
   if (t.divCounter & t.timaMask) == 0  && t.timaEnabled {
@@ -130,37 +156,25 @@ type Mediator interface {
 }
 
 type Bus struct {
-  memory MemoryMapper
+  memory [64*1024]Register8
   vram [8192]byte
-  ppu Ppu
-  timers Timers
+  ppu *Ppu
+  timers *Timers
 }
 
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
-  if address == 0xFF04 {
-    return bus.timers.readDiv()
-  } else if address == 0xFF05 {
-    return bus.timers.tima.read()
-  } else if address == 0xFF06 {
-    return bus.timers.tma.read()
-  } else if address == 0xFF07 {
-    return bus.timers.readTAC()
+  if address >= 0xFF04 && address <= 0xFF07 {
+    return bus.timers.read(address)
   } else {
-    return bus.memory.read(address)
+    return bus.memory[address].read()
   }
 }
 
 func (bus *Bus) WriteToBus(address uint16, value uint8) {
-  if address == 0xFF04 {
-    bus.timers.writeDiv(value)
-  } else if address == 0xFF05 {
-    bus.timers.tima.write(value)
-  } else if address == 0xFF06 {
-    bus.timers.tma.write(value)
-  } else if address == 0xFF07 {
-    bus.timers.writeTAC(value)
+  if address >= 0xFF04 && address <= 0xFF07 {
+    bus.timers.write(address, value)
   } else {
-    bus.memory.write(address, value)
+    bus.memory[address].write(value)
   }
 }
 
@@ -175,7 +189,7 @@ func (gb *Bus) LoadROM(romFilePath *string) {
   for address, element := range data {
     // starts at 0x0, first 256 bytes
     // will be overwitten by boot rom
-    gb.memory.write(uint16(address), element)
+    gb.WriteToBus(uint16(address), element)
   }
 }
 
@@ -188,7 +202,7 @@ func (gb *Bus) LoadBootROM() {
     log.Fatal("can't find boot rom")
   }
   for address, element := range data {
-    gb.memory.write(uint16(address), element)
+    gb.WriteToBus(uint16(address), element)
   }
 }
 
@@ -344,10 +358,7 @@ func (cpu *Cpu) FetchAndDecode() {
     // next time we want to increment it, unless told otherwise
     cpu.IncrementPC = true
 
-    oc := ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), false)
-
-    //gameboy doctor
-    //fmt.Printf("A:%02X F:%02X B:%02X C:%02X D:%02X E:%02X H:%02X L:%02X SP:%04X PC:%04X PCMEM:%02X,%02X,%02X,%02X\n",cpu.A.read(),cpu.F.read(),cpu.B.read(),cpu.C.read(),cpu.D.read(),cpu.E.read(),cpu.H.read(),cpu.L.read(),cpu.SP.read(),cpu.PC.read(),cpu.Bus.memory.read(cpu.PC.read()),cpu.Bus.memory.read(cpu.PC.read()+1),cpu.Bus.memory.read(cpu.PC.read()+2),cpu.Bus.memory.read(cpu.PC.read()+3))
+    oc := ByteToOpcode(cpu.Bus.ReadFromBus(cpu.PC.read()), false)
 
     // hmmm...if opcode isn't implemented, this sorta breaks because
     // the queue stays empty, FetchAndDecode() is called again
@@ -356,7 +367,7 @@ func (cpu *Cpu) FetchAndDecode() {
     // are implemented?
     if oc.Full == 0xCB {
       cpu.PC.inc()
-      oc = ByteToOpcode(cpu.Bus.memory.read(cpu.PC.read()), true)
+      oc = ByteToOpcode(cpu.Bus.ReadFromBus(cpu.PC.read()), true)
     }
 
     inst := cpu.OpcodeToInstruction(oc)
@@ -365,8 +376,8 @@ func (cpu *Cpu) FetchAndDecode() {
 }
 
 func (cpu *Cpu) LogSerial() {
-  if cpu.Bus.memory.read(0xFF02) != 0x0 {
-    serial := cpu.Bus.memory.read(0xFF01)
+  if cpu.Bus.ReadFromBus(0xFF02) != 0x0 {
+    serial := cpu.Bus.ReadFromBus(0xFF01)
     hexString := fmt.Sprintf("%X",serial)
     ascii, err := hex.DecodeString(hexString)
     if err != nil {
@@ -374,7 +385,7 @@ func (cpu *Cpu) LogSerial() {
     } else {
       fmt.Printf("%s",ascii)
     }
-    cpu.Bus.memory.write(0xFF02, 0x0)
+    cpu.Bus.WriteToBus(0xFF02, 0x0)
   }
 }
 
@@ -384,7 +395,7 @@ func (cpu *Cpu) DoInterrupts() {
     return
   }
 
-  // hardcoded memory addresses of interrupt service routines
+  // hardcoded addresses of interrupt service routines
   jumpFunctions := []func(*Cpu){
     func (cpu *Cpu) {cpu.PC.write(0x40)},
     func (cpu *Cpu) {cpu.PC.write(0x48)},
@@ -393,8 +404,8 @@ func (cpu *Cpu) DoInterrupts() {
     func (cpu *Cpu) {cpu.PC.write(0x60)},
   }
 
-  interruptEnable := cpu.Bus.memory.read(0xFFFF)
-  interruptFlags := cpu.Bus.memory.read(0xFF0F)
+  interruptEnable := cpu.Bus.ReadFromBus(0xFFFF)
+  interruptFlags := cpu.Bus.ReadFromBus(0xFF0F)
 
   interruptsToService := interruptFlags & interruptEnable
 
@@ -405,7 +416,7 @@ func (cpu *Cpu) DoInterrupts() {
       // reset flag bit
       mask := uint8(1 << index)
       mask = ^mask
-      cpu.Bus.memory.write(0xFF0F, interruptFlags & mask)
+      cpu.Bus.WriteToBus(0xFF0F, interruptFlags & mask)
       // reset IME
       cpu.IME = 0x0
       // push handling routine to queue
@@ -415,6 +426,7 @@ func (cpu *Cpu) DoInterrupts() {
       cpu.ExecutionQueue.Push(call_push_hi)
       cpu.ExecutionQueue.Push(call_push_lo)
       cpu.ExecutionQueue.Push(jumpFunctions[index])
+      cpu.IncrementPC = false
       return
     }
   }
@@ -424,9 +436,8 @@ func (gb *Cpu) Execute() {
   // TODO: timing
   counter := 0
   for {
-    // log serial
     gb.LogSerial()
-
+    gb.Bus.timers.doCycle()
     gb.DoInterrupts()
 
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
@@ -570,7 +581,7 @@ type Cpu struct {
 
   ExecutionQueue Fifo[func(*Cpu)]
 
-  Bus Bus
+  Bus *Bus
 
   IncrementPC bool
 
@@ -633,14 +644,14 @@ func (cpu *Cpu) ReadNN() uint16 {
   // we want to pull 2 bytes _following_ pc
   // without changing PC
   // GB memory is little endian! so we switch the order here
-  return (uint16(cpu.Bus.memory.read(cpu.PC.read()+2)) << 8) | uint16(cpu.Bus.memory.read(cpu.PC.read()+1))
+  return (uint16(cpu.Bus.ReadFromBus(cpu.PC.read()+2)) << 8) | uint16(cpu.Bus.ReadFromBus(cpu.PC.read()+1))
 }
 
 func (cpu *Cpu) ReadN() uint8 {
   // pc is location of current opcode
   // we want to pull byte _following_ pc
   // without changing PC
-  return cpu.Bus.memory.read(cpu.PC.read()+1)
+  return cpu.Bus.ReadFromBus(cpu.PC.read()+1)
 }
 
 func (cpu *Cpu) ReadD() int8 {
@@ -678,7 +689,7 @@ func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   case 5:
     return &(cpu.L)
   case 6:
-    return &(cpu.Bus.memory.memory[cpu.HL.read()])
+    return &(cpu.Bus.memory[cpu.HL.read()])
   case 7:
     return &(cpu.A)
   }
@@ -734,26 +745,23 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   ppu.bus = &bus
   ppu.screen = [160*144]uint8{}
 
-  mmu := MemoryMapper{}
-  mmu.bus = &bus
 
   timers := Timers{}
   timers.bus = &bus
 
-  bus.ppu = ppu
-  bus.memory = mmu
-  bus.timers = timers
+  bus.ppu = &ppu
+  bus.timers = &timers
 
-  gb.Bus = bus
+  gb.Bus = &bus
   gb.Bus.LoadROM(romFilePath)
 
   gb.IncrementPC = false
 
   // until video is implemented :(
-  gb.Bus.memory.write(0xFF44, 0x90)
+  gb.Bus.WriteToBus(0xFF44, 0x90)
   // is this needed?
   // https://github.com/Gekkio/mooneye-test-suite#passfail-reporting
-  gb.Bus.memory.write(0xFF02, 0xFF)
+  gb.Bus.WriteToBus(0xFF02, 0xFF)
 
   if useBootRom {
     gb.Bus.LoadBootROM()

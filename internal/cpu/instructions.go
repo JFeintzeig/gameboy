@@ -47,14 +47,14 @@ func call_push_hi(cpu *Cpu) {
   cpu.SP.dec()
   // return to _next_ instruction
   newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
-  cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC >> 8))
+  cpu.Bus.WriteToBus(cpu.SP.read(), uint8(newPC >> 8))
 }
 
 func call_push_lo(cpu *Cpu) {
   cpu.SP.dec()
   // return to _next_ instruction
   newPC := cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
-  cpu.Bus.memory.write(cpu.SP.read(), uint8(newPC & 0xFF))
+  cpu.Bus.WriteToBus(cpu.SP.read(), uint8(newPC & 0xFF))
 }
 
 func (cpu *Cpu) DoAluInstruction(a uint8, b uint8) {
@@ -156,7 +156,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   // X=0, Z=2, P=3, Q=0
   x0z2q0p3_1 := func (cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.HL.read(), cpu.A.read())
+    cpu.Bus.WriteToBus(cpu.HL.read(), cpu.A.read())
     cpu.HL.dec()
   }
 
@@ -168,7 +168,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   // X=0, Z=2, P=2, Q=0
   x0z2q0p2_1 := func (cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.HL.read(), cpu.A.read())
+    cpu.Bus.WriteToBus(cpu.HL.read(), cpu.A.read())
     cpu.HL.inc()
   }
 
@@ -180,7 +180,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   // X=0, Z=2, P=3, Q=1
   x0z2q1p3_1 := func (cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(cpu.HL.read()))
+    cpu.A.write(cpu.Bus.ReadFromBus(cpu.HL.read()))
     cpu.HL.dec()
   }
 
@@ -192,7 +192,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   // X=0, Z=2, P=2, Q=1
   x0z2q1p2_1 := func (cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(cpu.HL.read()))
+    cpu.A.write(cpu.Bus.ReadFromBus(cpu.HL.read()))
     cpu.HL.inc()
   }
 
@@ -257,7 +257,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x3z2y4_1 := func (cpu *Cpu) {
-    cpu.Bus.memory.write(0xFF00 + uint16(cpu.C.read()), cpu.A.read())
+    cpu.Bus.WriteToBus(0xFF00 + uint16(cpu.C.read()), cpu.A.read())
   }
 
   instructionMap["X3Z2Y4"] = Instruction{
@@ -267,7 +267,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x3z2y6_1 := func (cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(0xFF00 + uint16(cpu.C.read())))
+    cpu.A.write(cpu.Bus.ReadFromBus(0xFF00 + uint16(cpu.C.read())))
   }
 
   instructionMap["X3Z2Y6"] = Instruction{
@@ -308,7 +308,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   x3z0y4_2 := func (cpu *Cpu) {
     n := cpu.ReadN()
-    cpu.Bus.memory.write(0xFF00 + uint16(n), cpu.A.read())
+    cpu.Bus.WriteToBus(0xFF00 + uint16(n), cpu.A.read())
   }
 
   instructionMap["X3Z0Y4"] = Instruction{
@@ -319,12 +319,12 @@ func MakeInstructionMap() map[string]Instruction {
 
   x3z5q0_2 := func (cpu *Cpu) {
     cpu.SP.dec()
-    cpu.Bus.memory.write(cpu.SP.read(), cpu.rp2Table[cpu.CurrentOpcode.P].readHi())
+    cpu.Bus.WriteToBus(cpu.SP.read(), cpu.rp2Table[cpu.CurrentOpcode.P].readHi())
   }
 
   x3z5q0_3 := func (cpu *Cpu) {
     cpu.SP.dec()
-    cpu.Bus.memory.write(cpu.SP.read(), cpu.rp2Table[cpu.CurrentOpcode.P].readLo())
+    cpu.Bus.WriteToBus(cpu.SP.read(), cpu.rp2Table[cpu.CurrentOpcode.P].readLo())
   }
 
   instructionMap["X3Z5Q0"] = Instruction{
@@ -334,7 +334,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z2p0q0_1 := func (cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.BC.read(), cpu.A.read())
+    cpu.Bus.WriteToBus(cpu.BC.read(), cpu.A.read())
   }
 
   instructionMap["X0Z2P0Q0"] = Instruction{
@@ -344,7 +344,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z2p1q0_1 := func (cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.DE.read(), cpu.A.read())
+    cpu.Bus.WriteToBus(cpu.DE.read(), cpu.A.read())
   }
 
   instructionMap["X0Z2P1Q0"] = Instruction{
@@ -354,7 +354,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z2p1q1_1 := func (cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(cpu.DE.read()))
+    cpu.A.write(cpu.Bus.ReadFromBus(cpu.DE.read()))
   }
 
   instructionMap["X0Z2P1Q1"] = Instruction{
@@ -364,7 +364,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z2p0q1_1 := func (cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(cpu.BC.read()))
+    cpu.A.write(cpu.Bus.ReadFromBus(cpu.BC.read()))
   }
 
   instructionMap["X0Z2P0Q1"] = Instruction{
@@ -495,7 +495,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x3z0y6_2 := func(cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(0xFF00 | uint16(cpu.ReadN())))
+    cpu.A.write(cpu.Bus.ReadFromBus(0xFF00 + uint16(cpu.ReadN())))
   }
 
   instructionMap["X3Z0Y6"] = Instruction{
@@ -557,9 +557,9 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   ret := func(cpu *Cpu) {
-    lower := cpu.Bus.memory.read(cpu.SP.read())
+    lower := cpu.Bus.ReadFromBus(cpu.SP.read())
     cpu.SP.inc()
-    upper := cpu.Bus.memory.read(cpu.SP.read())
+    upper := cpu.Bus.ReadFromBus(cpu.SP.read())
     cpu.SP.inc()
 
     cpu.PC.write(uint16(upper) << 8 | uint16(lower))
@@ -667,7 +667,7 @@ func MakeInstructionMap() map[string]Instruction {
     // set the flags, because they
     // are one and the same
     reg := cpu.rp2Table[cpu.CurrentOpcode.P]
-    val := cpu.Bus.memory.read(cpu.SP.read())
+    val := cpu.Bus.ReadFromBus(cpu.SP.read())
     reg.lo.write(val)
     // AF: zero-out bottom nibble
     if cpu.CurrentOpcode.P == 3 {
@@ -678,7 +678,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   x3z1q0_2 := func(cpu *Cpu) {
     reg := cpu.rp2Table[cpu.CurrentOpcode.P]
-    val := cpu.Bus.memory.read(cpu.SP.read())
+    val := cpu.Bus.ReadFromBus(cpu.SP.read())
     reg.hi.write(val)
     cpu.SP.inc()
   }
@@ -690,7 +690,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x3z2y7_1 := func(cpu *Cpu) {
-    cpu.A.write(cpu.Bus.memory.read(cpu.ReadNN()))
+    cpu.A.write(cpu.Bus.ReadFromBus(cpu.ReadNN()))
   }
 
   instructionMap["X3Z2Y7"] = Instruction{
@@ -700,7 +700,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x3z2y5_1 := func(cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.ReadNN(), cpu.A.read())
+    cpu.Bus.WriteToBus(cpu.ReadNN(), cpu.A.read())
   }
 
   instructionMap["X3Z2Y5"] = Instruction{
@@ -817,11 +817,11 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z0y1_1 := func(cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.ReadNN(), cpu.SP.readLo())
+    cpu.Bus.WriteToBus(cpu.ReadNN(), cpu.SP.readLo())
   }
 
   x0z0y1_2 := func(cpu *Cpu) {
-    cpu.Bus.memory.write(cpu.ReadNN() + 1, cpu.SP.readHi())
+    cpu.Bus.WriteToBus(cpu.ReadNN() + 1, cpu.SP.readHi())
   }
 
   instructionMap["X0Z0Y1"] = Instruction{
