@@ -130,6 +130,9 @@ func (cpu *Cpu) DoAluInstruction(a uint8, b uint8) {
     return
   }
 
+// TODO: go through and re-check timing for each instr
+// TODO: and add no_ops to one's where previously FetchAndDecode()
+// TODO: was taking up a cycle
 func MakeInstructionMap() map[string]Instruction {
   // the keys in this map are just my internal
   // names based on the X/Y/Z/P/Q's we need to
@@ -314,7 +317,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y4"] = Instruction{
     "LD [0xFF00+u8], A",
     2,
-    []func(*Cpu){x3z0y4_1, x3z0y4_2},
+    []func(*Cpu){no_op, x3z0y4_1, x3z0y4_2},
   }
 
   x3z5q0_2 := func (cpu *Cpu) {
@@ -501,7 +504,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y6"] = Instruction{
     "LD A, [0xFF00+n]",
     2,
-    []func(*Cpu){x3z0y6_1, x3z0y6_2},
+    []func(*Cpu){no_op, x3z0y6_1, x3z0y6_2},
   }
 
   x0z5_1 := func(cpu *Cpu) {

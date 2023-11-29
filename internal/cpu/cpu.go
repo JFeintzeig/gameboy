@@ -16,8 +16,6 @@ type Timers struct {
   tma Register8
 
   divCounter uint16
-  // must update these
-  // TODO: initialize?
   timaMask uint16
   timaEnabled bool
   justOverflowed bool
@@ -46,11 +44,21 @@ func (t *Timers) write(address uint16, value uint8) {
   } else if address == 0xFF05 {
     t.writeTima(value)
   } else if address == 0xFF06 {
-    t.tma.write(value)
+    t.writeTma(value)
   } else if address == 0xFF07 {
     t.writeTAC(value)
   } else {
     panic("address not in timers")
+  }
+}
+
+func (t *Timers) writeTma(value uint8) {
+  t.tma.write(value)
+
+  // if TMA is updated in same cycle as it's
+  // written to TIMA, grab the new value
+  if t.afterJustOverflowed {
+    t.tima.write(t.tma.read())
   }
 }
 
@@ -121,7 +129,7 @@ func (t *Timers) writeTima(value uint8) {
 
 // TODO: other weird edge cases w/writing to DIV or TAC
 func (t *Timers) doCycle() {
-  fmt.Printf("counter: %d, div: %X, tima: %X, mask: %X, enabled: %t, tma: %X, tac: %X, int: %X\n",t.divCounter, t.readDiv(), t.tima.read(), t.timaMask, t.timaEnabled, t.tma.read(), t.readTAC(), t.bus.ReadFromBus(0xFF0F))
+  //fmt.Printf("counter: %d, div: %X, tima: %X, mask: %X, enabled: %t, tma: %X, tac: %X, int: %X\n",t.divCounter, t.readDiv(), t.tima.read(), t.timaMask, t.timaEnabled, t.tma.read(), t.readTAC(), t.bus.ReadFromBus(0xFF0F))
   t.divCounter += 4
 
   // order of reseting vs. setting this matter, needs to be
@@ -131,7 +139,6 @@ func (t *Timers) doCycle() {
   }
 
   // fire interrupt + reset TIMA the cycle after it overflowed
-  // TODO: what about if TMA is updated? pandos contradict itself
   if t.justOverflowed {
     interruptFlags := t.bus.ReadFromBus(0xFF0F)
     interruptFlags |= 0x4
@@ -441,7 +448,7 @@ func (cpu *Cpu) Execute() {
   for {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
-    fmt.Printf("D: %X E: %X", cpu.D.read(), cpu.E.read())
+    //fmt.Printf("A: %X D: %X E: %X\n", cpu.A.read(), cpu.D.read(), cpu.E.read())
     cpu.DoInterrupts()
 
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
@@ -473,10 +480,10 @@ func (cpu *Cpu) Execute() {
         // probably put this into an interrupt handler eventually
         cpu.SetIME()
         cpu.FetchAndDecode()
-    } else {
-      microop := cpu.ExecutionQueue.Pop()
-      microop(cpu)
     }
+
+    microop := cpu.ExecutionQueue.Pop()
+    microop(cpu)
     counter++
   }
 }
