@@ -278,8 +278,10 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X0Z7Y6"]
         case (op.X == 0) && (op.Z == 7) && (op.Y == 7):
           inst = cpu.InstructionMap["X0Z7Y7"]
-        case (op.X == 1) && !(op.Y == 6 && op.Z == 6):
+        case (op.X == 1) && !(op.Z == 6 && op.Y == 6):
           inst = cpu.InstructionMap["X1"]
+        case (op.X == 1) && (op.Z == 6) && (op.Y == 6):
+          inst = cpu.InstructionMap["X1Z6Y6"]
         case op.X == 2:
           inst = cpu.InstructionMap["X2"]
           return &inst
@@ -348,7 +350,8 @@ func (cpu *Cpu) FetchAndDecode() {
     // IncrementPC is initialized as `false` (b/c we want to start at 0x0)
     // and is also set to `false` by some instructions which set the PC
     // internally, e.g. `call`
-    if (cpu.IncrementPC) {
+    // if isHalted, we don't increment PC, so we keep executing the HALT instr
+    if cpu.IncrementPC && !cpu.isHalted {
       // lookup nBytes
       nBytes := cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes
       for i := uint8(0); i < nBytes; i++ {
@@ -391,7 +394,7 @@ func (cpu *Cpu) LogSerial() {
 
 // https://gbdev.io/pandocs/Interrupts.html#interrupts
 func (cpu *Cpu) DoInterrupts() {
-  if cpu.IME != 0x01 {
+  if !cpu.IME {
     return
   }
 
@@ -418,7 +421,7 @@ func (cpu *Cpu) DoInterrupts() {
       mask = ^mask
       cpu.Bus.WriteToBus(0xFF0F, interruptFlags & mask)
       // reset IME
-      cpu.IME = 0x0
+      cpu.IME = false
       // push handling routine to queue
       // 5 cycles: 2 no_op, push PC to stack, set PC to hardcoded address
       cpu.ExecutionQueue.Push(no_op)
@@ -587,7 +590,8 @@ type Cpu struct {
 
   // Interrupts, maybe encapsulate this in a handler
   pcToSetIMEAfter uint16
-  IME uint8
+  IME bool
+  isHalted bool
 }
 
 func (cpu *Cpu) getFlagZ() uint8 {
@@ -660,7 +664,7 @@ func (cpu *Cpu) ReadD() int8 {
 
 func (cpu *Cpu) SetIME() {
   if cpu.PC.read() > cpu.pcToSetIMEAfter {
-    cpu.IME = 0x01
+    cpu.IME = true
     cpu.pcToSetIMEAfter = 0xFFFF
   }
 }

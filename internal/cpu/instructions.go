@@ -277,7 +277,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x3y6z3_1 := func (cpu *Cpu) {
-    cpu.IME = 0x0
+    cpu.IME = false
   }
 
   instructionMap["X3Y6Z3"] = Instruction{
@@ -1058,6 +1058,30 @@ func MakeInstructionMap() map[string]Instruction {
     "SET y, r[z]",
     1,
     []func(*Cpu){cbx3_1},
+  }
+
+  // TODO: implement HALT bug
+  halt := func(cpu *Cpu){
+    // make it halt
+    cpu.isHalted = true
+
+    pendingInt := (cpu.Bus.ReadFromBus(0xFFFF) & cpu.Bus.ReadFromBus(0xFF0F)) != 0
+
+    // unhalt if pending interrupt, regardless of IME
+    // DoInterrupts() will check IME to decide whether to service interrupt
+    if pendingInt {
+      cpu.isHalted = false
+      return
+    }
+
+    // if no pending interrupt, keep halting
+    return
+  }
+
+  instructionMap["X1Z6Y6"] = Instruction{
+    "HALT",
+    1,
+    []func(*Cpu){halt},
   }
 
   return instructionMap
