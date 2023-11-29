@@ -121,7 +121,7 @@ func (t *Timers) writeTima(value uint8) {
 
 // TODO: other weird edge cases w/writing to DIV or TAC
 func (t *Timers) doCycle() {
-  //fmt.Printf("counter: %d, div: %X, tima: %X, mask: %X, enabled: %t, tma: %X, tac: %X, int: %X\n",t.divCounter, t.readDiv(), t.tima.read(), t.timaMask, t.timaEnabled, t.tma.read(), t.readTAC(), t.bus.ReadFromBus(0xFF0F))
+  fmt.Printf("counter: %d, div: %X, tima: %X, mask: %X, enabled: %t, tma: %X, tac: %X, int: %X\n",t.divCounter, t.readDiv(), t.tima.read(), t.timaMask, t.timaEnabled, t.tma.read(), t.readTAC(), t.bus.ReadFromBus(0xFF0F))
   t.divCounter += 4
 
   // order of reseting vs. setting this matter, needs to be
@@ -178,7 +178,7 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
   }
 }
 
-func (gb *Bus) LoadROM(romFilePath *string) {
+func (bus *Bus) LoadROM(romFilePath *string) {
   data, err := ioutil.ReadFile(*romFilePath)
   if err != nil {
     log.Fatal("can't find file")
@@ -189,20 +189,20 @@ func (gb *Bus) LoadROM(romFilePath *string) {
   for address, element := range data {
     // starts at 0x0, first 256 bytes
     // will be overwitten by boot rom
-    gb.WriteToBus(uint16(address), element)
+    bus.WriteToBus(uint16(address), element)
   }
 }
 
 // TODO: somehow need to unmap this after the BootROM finishes
 // monitor FF50 and then reload game cartridge?
 // https://gbdev.io/pandocs/Memory_Map.html#io-ranges
-func (gb *Bus) LoadBootROM() {
+func (bus *Bus) LoadBootROM() {
   data, err := ioutil.ReadFile("data/bootrom_dmg.gb")
   if err != nil {
     log.Fatal("can't find boot rom")
   }
   for address, element := range data {
-    gb.WriteToBus(uint16(address), element)
+    bus.WriteToBus(uint16(address), element)
   }
 }
 
@@ -435,13 +435,14 @@ func (cpu *Cpu) DoInterrupts() {
   }
 }
 
-func (gb *Cpu) Execute() {
+func (cpu *Cpu) Execute() {
   // TODO: timing
   counter := 0
   for {
-    gb.LogSerial()
-    gb.Bus.timers.doCycle()
-    gb.DoInterrupts()
+    cpu.LogSerial()
+    cpu.Bus.timers.doCycle()
+    fmt.Printf("D: %X E: %X", cpu.D.read(), cpu.E.read())
+    cpu.DoInterrupts()
 
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
     //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
@@ -468,13 +469,13 @@ func (gb *Cpu) Execute() {
     // * opcode that jumps won't work fine b/c PC will still be incremented externally
     // * what happens to SetIME in this scheme? b/c first if statement only happens at
     //   cold start...
-    if gb.ExecutionQueue.Length() < 1 {
+    if cpu.ExecutionQueue.Length() < 1 {
         // probably put this into an interrupt handler eventually
-        gb.SetIME()
-        gb.FetchAndDecode()
+        cpu.SetIME()
+        cpu.FetchAndDecode()
     } else {
-      microop := gb.ExecutionQueue.Pop()
-      microop(gb)
+      microop := cpu.ExecutionQueue.Pop()
+      microop(cpu)
     }
     counter++
   }
@@ -762,7 +763,7 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.IncrementPC = false
 
   // until video is implemented :(
-  gb.Bus.WriteToBus(0xFF44, 0x90)
+  gb.Bus.WriteToBus(0xFF44, 0xFF)
   // is this needed?
   // https://github.com/Gekkio/mooneye-test-suite#passfail-reporting
   gb.Bus.WriteToBus(0xFF02, 0xFF)
