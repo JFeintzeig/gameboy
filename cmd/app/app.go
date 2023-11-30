@@ -17,7 +17,7 @@ func init() {
 func main() {
   flag.Parse()
 
-  gb := cpu.NewGameBoy(file, false)
+  gb := cpu.NewGameBoy(file, true)
 
   // ebiten.SetWindowSize(640, 320)
   // ebiten.SetWindowTitle("Hello, World!")

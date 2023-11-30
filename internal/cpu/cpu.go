@@ -64,24 +64,18 @@ func (t *Timers) writeTma(value uint8) {
 
 func (t *Timers) readTAC() uint8 {
   var cs uint8
-  var en uint8
   switch t.timaMask {
     case 1023: cs = 0x00
     case 15: cs = 0x01
     case 63: cs = 0x02
     case 255: cs = 0x03
   }
-  if t.timaEnabled {
-    en = 1
-  } else {
-    en = 0
-  }
 
-  return (cs | en << 2)
+  return SetBitBool(cs, 2, t.timaEnabled)
 }
 
 func (t *Timers) writeTAC(value uint8) {
-  t.timaEnabled = (value & 0x04) == 4
+  t.timaEnabled = GetBitBool(value, 2)
   switch (value & 0x03) {
     case 0x00:
       t.timaMask = 1023
@@ -164,22 +158,29 @@ type Mediator interface {
 
 type Bus struct {
   memory [64*1024]Register8
-  vram [8192]byte
   ppu *Ppu
   timers *Timers
 }
 
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
-  if address >= 0xFF04 && address <= 0xFF07 {
+  if address >= 0x8000 && address <= 0x9FFF {
+    return bus.ppu.readVRAM(address)
+  } else if address >= 0xFF04 && address <= 0xFF07 {
     return bus.timers.read(address)
+  } else if address >= 0xFF40 && address <= 0xFF4B {
+    return bus.ppu.readRegister(address)
   } else {
     return bus.memory[address].read()
   }
 }
 
 func (bus *Bus) WriteToBus(address uint16, value uint8) {
-  if address >= 0xFF04 && address <= 0xFF07 {
+  if address >= 0x8000 && address <= 0x9FFF {
+    bus.ppu.writeVRAM(address, value)
+  } else if address >= 0xFF04 && address <= 0xFF07 {
     bus.timers.write(address, value)
+  } else if address >= 0xFF40 && address <= 0xFF4B {
+    bus.ppu.writeRegister(address, value)
   } else {
     bus.memory[address].write(value)
   }
@@ -391,7 +392,7 @@ func (cpu *Cpu) LogSerial() {
     hexString := fmt.Sprintf("%X",serial)
     ascii, err := hex.DecodeString(hexString)
     if err != nil {
-      fmt.Printf("\n%x\n",serial)
+      fmt.Printf("\nErr: %x\n",serial)
     } else {
       fmt.Printf("%s",ascii)
     }
@@ -448,6 +449,7 @@ func (cpu *Cpu) Execute() {
   for {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
+    cpu.Bus.ppu.doCycle()
     //fmt.Printf("A: %X D: %X E: %X\n", cpu.A.read(), cpu.D.read(), cpu.E.read())
     cpu.DoInterrupts()
 
@@ -677,12 +679,6 @@ func (cpu *Cpu) SetIME() {
   }
 }
 
-type Ppu struct {
-  bus Mediator
-
-  screen [160*144]uint8
-}
-
 func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   if(index > 7) {
     panic("no register with index > 7")
@@ -753,15 +749,12 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
 
   bus := Bus{}
 
-  ppu := Ppu{}
-  ppu.bus = &bus
-  ppu.screen = [160*144]uint8{}
-
+  ppu := NewPpu(&bus)
 
   timers := Timers{}
   timers.bus = &bus
 
-  bus.ppu = &ppu
+  bus.ppu = ppu
   bus.timers = &timers
 
   gb.Bus = &bus
