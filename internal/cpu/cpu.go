@@ -449,9 +449,9 @@ func (cpu *Cpu) Execute() {
   for {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
-    cpu.Bus.ppu.doCycle()
-    //fmt.Printf("A: %X D: %X E: %X\n", cpu.A.read(), cpu.D.read(), cpu.E.read())
+    //fmt.Printf("A: %X PC: %X SP: %X INSTR %s %t %t\n", cpu.A.read(), cpu.PC.read(), cpu.SP.read(), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.IncrementPC, cpu.isHalted)
     cpu.DoInterrupts()
+    cpu.Bus.ppu.doCycle()
 
     // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
     //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
