@@ -9,3 +9,6 @@ test_timer: app
 
 test_ppu: app
 	./scripts/run_test_roms.sh ~/projects/2023/gameboy_resources/mts-20221022-1430-8d742b9/acceptance/ppu/
+
+test_instr_timing: app
+	./scripts/run_test_roms.sh ~/projects/2023/gameboy_resources/gb-test-roms/instr_timing/

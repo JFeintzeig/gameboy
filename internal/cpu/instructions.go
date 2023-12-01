@@ -1054,7 +1054,6 @@ func MakeInstructionMap() map[string]Instruction {
 
     if cpu.CurrentOpcode.Z == 6 {
       cpu.ExecutionQueue.Push(no_op)
-      cpu.ExecutionQueue.Push(no_op)
     }
   }
 
