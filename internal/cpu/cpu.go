@@ -3,8 +3,6 @@ package cpu
 import (
   "encoding/hex"
   "fmt"
-  "io/ioutil"
-  "log"
 )
 
 const CLOCK_SPEED uint64 = 4.19e6
@@ -148,69 +146,6 @@ func (t *Timers) doCycle() {
     if t.tima.read() == 0x0 {
       t.justOverflowed = true
     }
-  }
-}
-
-type Mediator interface {
-  ReadFromBus(uint16) uint8
-  WriteToBus(uint16, uint8)
-}
-
-type Bus struct {
-  memory [64*1024]Register8
-  ppu *Ppu
-  timers *Timers
-}
-
-func (bus *Bus) ReadFromBus(address uint16) uint8 {
-  if address >= 0x8000 && address <= 0x9FFF {
-    return bus.ppu.readVRAM(address)
-  } else if address >= 0xFF04 && address <= 0xFF07 {
-    return bus.timers.read(address)
-  } else if address >= 0xFF40 && address <= 0xFF4B {
-    return bus.ppu.readRegister(address)
-  } else {
-    return bus.memory[address].read()
-  }
-}
-
-func (bus *Bus) WriteToBus(address uint16, value uint8) {
-  if address >= 0x8000 && address <= 0x9FFF {
-    bus.ppu.writeVRAM(address, value)
-  } else if address >= 0xFF04 && address <= 0xFF07 {
-    bus.timers.write(address, value)
-  } else if address >= 0xFF40 && address <= 0xFF4B {
-    bus.ppu.writeRegister(address, value)
-  } else {
-    bus.memory[address].write(value)
-  }
-}
-
-func (bus *Bus) LoadROM(romFilePath *string) {
-  data, err := ioutil.ReadFile(*romFilePath)
-  if err != nil {
-    log.Fatal("can't find file")
-  }
-  if len(data) != 32*1024 {
-    log.Fatal("I can only do 32kb ROMs")
-  }
-  for address, element := range data {
-    // starts at 0x0, first 256 bytes
-    // will be overwitten by boot rom
-    bus.WriteToBus(uint16(address), element)
-  }
-}
-
-// TODO: somehow need to unmap this after the BootROM finishes
-// monitor FF50 and then reload game cartridge?
-// https://gbdev.io/pandocs/Memory_Map.html#io-ranges
-func (bus *Bus) LoadBootROM() {
-  data, err := ioutil.ReadFile("data/bootrom_dmg.gb")
-  if err != nil {
-    log.Fatal("can't find boot rom")
-  }
-  for address, element := range data {
-    bus.WriteToBus(uint16(address), element)
   }
 }
 
@@ -449,7 +384,6 @@ func (cpu *Cpu) Execute() {
   for {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
-    //fmt.Printf("D: %X E: %X INSTR %s %X\n", cpu.D.read(), cpu.E.read(), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.ReadNN())
     cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 
@@ -482,88 +416,13 @@ func (cpu *Cpu) Execute() {
         // probably put this into an interrupt handler eventually
         cpu.SetIME()
         cpu.FetchAndDecode()
+        //fmt.Printf("A: %X B: %X HL: %X (HL): %08b, INSTR %s %X\n", cpu.A.read(), cpu.B.read(), cpu.HL.read(), cpu.Bus.ReadFromBus(cpu.HL.read()), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.ReadNN())
     }
 
     microop := cpu.ExecutionQueue.Pop()
     microop(cpu)
     counter++
   }
-}
-
-type Register8 struct {
-  value uint8
-}
-
-func (reg *Register8) read() uint8 {
-  return reg.value
-}
-
-func (reg *Register8) write(value uint8) {
-  reg.value = value
-}
-
-func (reg *Register8) inc() {
-  reg.value += 1
-}
-
-func (reg *Register8) dec() {
-  reg.value -= 1
-}
-
-type Register16 struct {
-  lo *Register8
-  hi *Register8
-}
-
-func (reg *Register16) read() uint16 {
-  return (uint16(reg.hi.value) << 8) | uint16(reg.lo.value)
-}
-
-func (reg *Register16) readHi() uint8 {
-  return reg.hi.value
-}
-
-func (reg *Register16) readLo() uint8 {
-  return reg.lo.value
-}
-
-func (reg *Register16) write(value uint16) {
-  reg.writeLo(value)
-  reg.writeHi(value)
-}
-
-func (reg *Register16) writeHi(value uint16) {
-  reg.hi.write(uint8(value >> 8))
-}
-
-func (reg *Register16) writeLo(value uint16) {
-  reg.lo.write(uint8(value&0xff))
-}
-
-func (reg *Register16) inc() {
-  reg.write(reg.read()+1)
-}
-
-func (reg *Register16) dec() {
-  reg.write(reg.read()-1)
-}
-
-type Fifo[T any] struct {
-  values []T
-}
-
-func (fifo *Fifo[T]) Push(val T) {
-  fifo.values = append(fifo.values, val)
-}
-
-func (fifo *Fifo[T]) Pop() T {
-  x, a := fifo.values[0], fifo.values[1:]
-  fifo.values = a
-  return x
-}
-
-func (fifo *Fifo[T]) Length() int {
-  return len(fifo.values)
 }
 
 type Cpu struct {
@@ -679,7 +538,7 @@ func (cpu *Cpu) SetIME() {
   }
 }
 
-func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
+func (cpu *Cpu) GetRTableRegister(index uint8) MemoryByte {
   if(index > 7) {
     panic("no register with index > 7")
   }
@@ -697,6 +556,7 @@ func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   case 5:
     return &(cpu.L)
   case 6:
+    //return &(cpu.Bus.ReadFromBus(cpu.HL.read()))
     return &(cpu.Bus.memory[cpu.HL.read()])
   case 7:
     return &(cpu.A)

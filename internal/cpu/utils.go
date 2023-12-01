@@ -24,3 +24,21 @@ func GetBitBool(value uint8, bitNum uint8) bool {
       return false
     }
 }
+
+type Fifo[T any] struct {
+  values []T
+}
+
+func (fifo *Fifo[T]) Push(val T) {
+  fifo.values = append(fifo.values, val)
+}
+
+func (fifo *Fifo[T]) Pop() T {
+  x, a := fifo.values[0], fifo.values[1:]
+  fifo.values = a
+  return x
+}
+
+func (fifo *Fifo[T]) Length() int {
+  return len(fifo.values)
+}
