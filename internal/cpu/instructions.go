@@ -1019,6 +1019,7 @@ func MakeInstructionMap() map[string]Instruction {
   cbx1_1 := func (cpu *Cpu) {
     oc := cpu.CurrentOpcode
     register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    //TODO: replace with Get/Set bit util functions; same with flags
     result := (register.read() >> oc.Y) & 0x01
     if result == 0 {
       cpu.setFlagZ()

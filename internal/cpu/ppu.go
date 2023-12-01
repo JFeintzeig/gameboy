@@ -23,7 +23,7 @@ const N_FETCHER_STATES = 4
 
 const (
   GetTile FetcherState = iota
-  GetTileDataLow 
+  GetTileDataLow
   GetTileDataHigh
   Push
 )
@@ -44,6 +44,7 @@ func NewPpu(busPointer *Bus) *Ppu {
   ppu.currentMode = M2
   ppu.LY.write(0)
   ppu.currentFetcherState = 0
+  ppu.statInterruptLine = false
 
   ppu.bus = busPointer
   ppu.vram = [8*1024]uint8{}
@@ -95,6 +96,7 @@ type Ppu struct {
   mode0Int bool
   LYCeqLY bool
   currentMode Mode
+  statInterruptLine bool
 }
 
 func (ppu *Ppu) GetTile() bool {
@@ -117,26 +119,55 @@ func (ppu *Ppu) Push() bool {
 }
 
 func (ppu *Ppu) doFetchRoutine() {
-    success := ppu.applyFetcherState[ppu.currentFetcherState]()
+  success := ppu.applyFetcherState[ppu.currentFetcherState]()
 
-    if ppu.currentFetcherState == Push && !success {
-      return
-    }
+  if ppu.currentFetcherState == Push && !success {
+    return
+  }
 
-    ppu.currentFetcherState = ppu.currentFetcherState.next()
+  ppu.currentFetcherState = ppu.currentFetcherState.next()
+}
+
+func (ppu *Ppu) maybeRequestInterrupt() {
+  newStatInterruptLine := false
+
+  if ppu.lycInt && ppu.LYCeqLY {
+    newStatInterruptLine = true
+  } else if ppu.currentMode == M0 && ppu.mode0Int {
+    newStatInterruptLine = true
+  } else if ppu.currentMode == M1 && ppu.mode1Int {
+    newStatInterruptLine = true
+  } else if ppu.currentMode == M2 && ppu.mode2Int {
+    newStatInterruptLine = true
+  }
+
+  if newStatInterruptLine && !ppu.statInterruptLine {
+    ppu.statInterruptLine = true
+    IF := ppu.bus.ReadFromBus(0xFF0F)
+    ppu.bus.WriteToBus(0xFF0F, SetBitBool(IF, 1, true))
+  }
+
+  ppu.statInterruptLine = newStatInterruptLine
 }
 
 func (ppu *Ppu) doCycle() {
-  //fmt.Printf("NDOTS: %d MODE: %d LY: %d FETCHER: %d\n", ppu.nDots, ppu.currentMode, ppu.LY.read(), ppu.currentFetcherState)
-
   ppu.nDots += 4
 
   if ppu.LYC == ppu.LY {
     ppu.LYCeqLY = true
-    // fire interrupt
   } else {
     ppu.LYCeqLY = false
   }
+
+  ppu.maybeRequestInterrupt()
+  // debugging: so we know STAT interrupt triggers in IF and gets cleared
+  // at row 34090 of file. but we don't know why that doesn't break out
+  // of HALT here: https://github.com/Gekkio/mooneye-test-suite/blob/8d742b9d55055f6878a2f3017e0ccf2234cd692c/acceptance/ppu/intr_1_2_timing-GS.s#L64
+  // can get 02-interrupts to pass if i change 2nd delay to 642 instead
+  // of 500, so HALT and interrupt handling must work somehow...
+  // so maybe it does break out of HALT?
+  // STAT: 001 never found in log...so somewhere before there it hangs...
+  //fmt.Printf("MODE: %d LY: %d IL: %t STAT: %08b IF: %08b IE: %08b\n", ppu.currentMode, ppu.LY.read(), ppu.statInterruptLine, ppu.readRegister(0xFF41), ppu.bus.ReadFromBus(0xFF0F), ppu.bus.ReadFromBus(0xFFFF))
 
   if ppu.currentMode == M2 {
     // implement M2
@@ -144,7 +175,6 @@ func (ppu *Ppu) doCycle() {
     if ppu.nDots == 80 {
       ppu.nDots = 0
       ppu.currentMode = M3
-      // fire interrupt
     }
   } else if ppu.currentMode == M3 {
     // 4 dots worth
@@ -155,7 +185,6 @@ func (ppu *Ppu) doCycle() {
       ppu.currentMode = M0
       ppu.currentFetcherState = 0
       // don't reset nDots here, keep counting to end of line
-      // fire interrupt
     }
   } else if ppu.currentMode == M0 {
     // HBlank - do stuff
@@ -166,6 +195,10 @@ func (ppu *Ppu) doCycle() {
       ppu.nDots = 0
       if ppu.LY.read() == 144 {
         ppu.currentMode = M1
+
+        // VBlank interrupt
+        IF := ppu.bus.ReadFromBus(0xFF0F)
+        ppu.bus.WriteToBus(0xFF0F, SetBitBool(IF, 0, true))
       } else {
         ppu.currentMode = M2
       }
@@ -177,7 +210,6 @@ func (ppu *Ppu) doCycle() {
       ppu.LY.write(0)
       ppu.currentMode = M2
 
-      // fire interrupt?
     } else if ppu.nDots % 456 == 0 {
       // end of scanline
       ppu.LY.inc()
