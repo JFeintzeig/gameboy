@@ -449,7 +449,7 @@ func (cpu *Cpu) Execute() {
   for {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
-    //fmt.Printf("A: %X PC: %X SP: %X INSTR %s %t %t\n", cpu.A.read(), cpu.PC.read(), cpu.SP.read(), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.IncrementPC, cpu.isHalted)
+    //fmt.Printf("D: %X E: %X INSTR %s %X\n", cpu.D.read(), cpu.E.read(), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.ReadNN())
     cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 

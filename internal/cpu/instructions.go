@@ -154,7 +154,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z1Q0"] = Instruction{
     "LD rp[p] nn",
     3,
-    []func(*Cpu){x0z1q0_1, x0z1q0_2},
+    []func(*Cpu){no_op, x0z1q0_1, x0z1q0_2},
   }
 
   // X=0, Z=2, P=3, Q=0
@@ -166,7 +166,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P3Q0"] = Instruction {
    "LDD (HL) A",
    1,
-   []func(*Cpu){x0z2q0p3_1},
+   []func(*Cpu){no_op, x0z2q0p3_1},
   }
 
   // X=0, Z=2, P=2, Q=0
@@ -178,7 +178,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P2Q0"] = Instruction {
    "LDI (HL) A",
    1,
-   []func(*Cpu){x0z2q0p2_1},
+   []func(*Cpu){no_op, x0z2q0p2_1},
   }
 
   // X=0, Z=2, P=3, Q=1
@@ -190,7 +190,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P3Q1"] = Instruction {
    "LDD A (HL)",
    1,
-   []func(*Cpu){x0z2q1p3_1},
+   []func(*Cpu){no_op, x0z2q1p3_1},
   }
 
   // X=0, Z=2, P=2, Q=1
@@ -202,7 +202,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P2Q1"] = Instruction {
    "LDI A (HL)",
    1,
-   []func(*Cpu){x0z2q1p2_1},
+   []func(*Cpu){no_op, x0z2q1p2_1},
   }
 
   // X=2
@@ -212,6 +212,9 @@ func MakeInstructionMap() map[string]Instruction {
     b := register.read()
 
     cpu.DoAluInstruction(a, b)
+    if cpu.CurrentOpcode.Z == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+    }
   }
 
  // TODO: if instructions in same group
@@ -251,12 +254,15 @@ func MakeInstructionMap() map[string]Instruction {
 
   x0z6_1 := func (cpu *Cpu) {
     cpu.GetRTableRegister(cpu.CurrentOpcode.Y).write(cpu.ReadN())
+    if cpu.CurrentOpcode.Y == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+    }
   }
 
   instructionMap["X0Z6"] = Instruction{
     "LD r[y], N",
     2,
-    []func(*Cpu){x0z6_1},
+    []func(*Cpu){no_op, x0z6_1},
   }
 
   x3z2y4_1 := func (cpu *Cpu) {
@@ -266,7 +272,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y4"] = Instruction{
     "LD [0xFF00 + C], A",
     1,
-    []func(*Cpu){x3z2y4_1},
+    []func(*Cpu){no_op, x3z2y4_1},
   }
 
   x3z2y6_1 := func (cpu *Cpu) {
@@ -276,7 +282,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y6"] = Instruction{
     "LD A, [0xFF00 + C]",
     1,
-    []func(*Cpu){x3z2y6_1},
+    []func(*Cpu){no_op, x3z2y6_1},
   }
 
   x3y6z3_1 := func (cpu *Cpu) {
@@ -290,10 +296,14 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x1_1:= func (cpu *Cpu) {
-    // oh no, if it gets [HL] that's an extra 1-2 cycles compared
-    // to other values of Y / Z :(
     from := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
     to := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+    // oh no, if it gets [HL] that's an extra 1-2 cycles compared
+    // to other values of Y / Z :(
+    // ideally this would happen _before_ x1_1 is executed
+    if cpu.CurrentOpcode.Y == 6 || cpu.CurrentOpcode.Z == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+    }
     to.write(from.read())
   }
 
@@ -333,7 +343,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z5Q0"] = Instruction{
     "PUSH rp2[p]",
     1,
-    []func(*Cpu){no_op,x3z5q0_2,x3z5q0_3},
+    []func(*Cpu){no_op, no_op,x3z5q0_2,x3z5q0_3},
   }
 
   x0z2p0q0_1 := func (cpu *Cpu) {
@@ -343,7 +353,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P0Q0"] = Instruction{
     "LD [BC], A",
     1,
-    []func(*Cpu){x0z2p0q0_1},
+    []func(*Cpu){no_op, x0z2p0q0_1},
   }
 
   x0z2p1q0_1 := func (cpu *Cpu) {
@@ -353,7 +363,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P1Q0"] = Instruction{
     "LD [DE], A",
     1,
-    []func(*Cpu){x0z2p1q0_1},
+    []func(*Cpu){no_op, x0z2p1q0_1},
   }
 
   x0z2p1q1_1 := func (cpu *Cpu) {
@@ -363,7 +373,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P1Q1"] = Instruction{
     "LD A, [DE]",
     1,
-    []func(*Cpu){x0z2p1q1_1},
+    []func(*Cpu){no_op, x0z2p1q1_1},
   }
 
   x0z2p0q1_1 := func (cpu *Cpu) {
@@ -373,7 +383,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P0Q1"] = Instruction{
     "LD A, [BC]",
     1,
-    []func(*Cpu){x0z2p0q1_1},
+    []func(*Cpu){no_op, x0z2p0q1_1},
   }
 
   // combining Q=0 and Q=1 into one function
@@ -389,7 +399,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z3"] = Instruction{
     "INC rp[p]",
     1,
-    []func(*Cpu){x0z3_1},
+    []func(*Cpu){no_op, x0z3_1},
   }
 
   x0z0ygte4_1 := func (cpu *Cpu) {
@@ -419,7 +429,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z0Ygte4"] = Instruction{
     "JR cc[y-4], d",
     2,
-    []func(*Cpu){x0z0ygte4_1},
+    []func(*Cpu){no_op, x0z0ygte4_1},
   }
 
   x0z0y3_1 := func (cpu *Cpu) {
@@ -437,7 +447,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z0Y3"] = Instruction{
     "JR d",
     2,
-    []func(*Cpu){no_op, x0z0y3_1},
+    []func(*Cpu){no_op, no_op, x0z0y3_1},
   }
 
   x3z6_1 := func (cpu *Cpu) {
@@ -449,7 +459,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z6"] = Instruction{
     "alu[y] n",
     2,
-    []func(*Cpu){x3z6_1},
+    []func(*Cpu){no_op, x3z6_1},
   }
 
   call_push_lo_and_jump := func (cpu *Cpu) {
@@ -467,7 +477,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z5P0Q1"] = Instruction{
     "CALL NN",
     3,
-    []func(*Cpu){no_op, no_op, no_op, call_push_hi, call_push_lo_and_jump},
+    []func(*Cpu){no_op, no_op, no_op, no_op, call_push_hi, call_push_lo_and_jump},
   }
 
   x3z4ylte3_branch := func (cpu *Cpu) {
@@ -490,7 +500,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z7"] = Instruction{
     "RST y*8",
     1,
-    []func(*Cpu){no_op, call_push_hi, call_push_lo_and_jump},
+    []func(*Cpu){no_op, no_op, call_push_hi, call_push_lo_and_jump},
   }
 
   x3z0y6_1 := func(cpu *Cpu) {
@@ -509,6 +519,10 @@ func MakeInstructionMap() map[string]Instruction {
 
   x0z5_1 := func(cpu *Cpu) {
     reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+    if cpu.CurrentOpcode.Y == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+    }
     reg.dec()
     val := reg.read()
 
@@ -535,6 +549,10 @@ func MakeInstructionMap() map[string]Instruction {
 
   x0z4_1 := func(cpu *Cpu) {
     reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+    if cpu.CurrentOpcode.Y == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+    }
     reg.inc()
     val := reg.read()
 
@@ -574,7 +592,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z1Q1P0"] = Instruction{
     "RET",
     1,
-    []func(*Cpu){no_op, no_op, ret},
+    []func(*Cpu){no_op, no_op, no_op, ret},
   }
 
   x3z1q1p1_1 := func(cpu *Cpu) {
@@ -588,7 +606,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z1Q1P1"] = Instruction{
     "RETI",
     1,
-    []func(*Cpu){no_op, no_op, x3z1q1p1_1},
+    []func(*Cpu){no_op, no_op, no_op, x3z1q1p1_1},
   }
 
   x3z0ylte3_1 := func(cpu *Cpu) {
@@ -607,7 +625,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Ylte3"] = Instruction{
     "RET cc[y]",
     1,
-    []func(*Cpu){x3z0ylte3_1},
+    []func(*Cpu){no_op, x3z0ylte3_1},
   }
 
   instructionMap["X0Z0Y0"] = Instruction{
@@ -625,7 +643,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z3Y0"] = Instruction{
     "JP NN",
     3,
-    []func(*Cpu){no_op, no_op, x3z3y0_1},
+    []func(*Cpu){no_op, no_op, no_op, x3z3y0_1},
   }
 
   x3z1q1p2_1 := func(cpu *Cpu) {
@@ -662,7 +680,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Ylte3"] = Instruction{
     "JP cc[y], nn",
     3,
-    []func(*Cpu){no_op, x3z2ylte3_1},
+    []func(*Cpu){no_op, no_op, x3z2ylte3_1},
   }
 
   x3z1q0_1 := func(cpu *Cpu) {
@@ -689,7 +707,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z1Q0"] = Instruction{
     "POP rp2[p]",
     1,
-    []func(*Cpu){x3z1q0_1, x3z1q0_2},
+    []func(*Cpu){no_op, x3z1q0_1, x3z1q0_2},
   }
 
   x3z2y7_1 := func(cpu *Cpu) {
@@ -699,7 +717,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y7"] = Instruction{
     "LD A, [NN]",
     3,
-    []func(*Cpu){no_op, no_op, x3z2y7_1},
+    []func(*Cpu){no_op, no_op, no_op, x3z2y7_1},
   }
 
   x3z2y5_1 := func(cpu *Cpu) {
@@ -709,7 +727,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y5"] = Instruction{
     "LD [NN], A",
     3,
-    []func(*Cpu){no_op, no_op, x3z2y5_1},
+    []func(*Cpu){no_op, no_op, no_op, x3z2y5_1},
   }
 
   // same as the rot functions but
@@ -747,7 +765,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   instructionMap["X0Z7Ylte3"] = Instruction{
-    "RLCA/RRCA/RLA/RCA",
+    "RLCA/RRCA/RLA/RRA",
     1,
     []func(*Cpu){x0z7ylte3_1},
   }
@@ -816,7 +834,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z1Q1"] = Instruction{
     "ADD HL, rp[p]",
     1,
-    []func(*Cpu){x0z1q1_1},
+    []func(*Cpu){no_op, x0z1q1_1},
   }
 
   x0z0y1_1 := func(cpu *Cpu) {
@@ -830,7 +848,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z0Y1"] = Instruction{
     "LD (nn) SP",
     3,
-    []func(*Cpu){no_op, no_op, x0z0y1_1, x0z0y1_2},
+    []func(*Cpu){no_op, no_op, no_op, x0z0y1_1, x0z0y1_2},
   }
 
   x0z0y2_1 := func(cpu *Cpu) {
@@ -850,7 +868,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z1Q1P3"] = Instruction{
     "LD SP, HL",
     1,
-    []func(*Cpu){x3z1q1p3_1},
+    []func(*Cpu){no_op, x3z1q1p3_1},
   }
 
   x3z0y5_1 := func(cpu *Cpu) {
@@ -879,7 +897,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y5"] = Instruction{
     "ADD SP, d",
     2,
-    []func(*Cpu){no_op, no_op, x3z0y5_1},
+    []func(*Cpu){no_op, no_op, no_op, x3z0y5_1},
   }
 
   x3z0y7_1 := func(cpu *Cpu) {
@@ -906,7 +924,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y7"] = Instruction{
     "LD HL, SP + d",
     2,
-    []func(*Cpu){no_op, x3z0y7_1},
+    []func(*Cpu){no_op, no_op, x3z0y7_1},
   }
 
   // https://blog.ollien.com/posts/gb-daa/
@@ -1008,12 +1026,17 @@ func MakeInstructionMap() map[string]Instruction {
     }
 
     reg.write(result)
+
+    if cpu.CurrentOpcode.Z == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+    }
   }
 
   instructionMap["CBX0"] = Instruction{
     "rot[y] r[z]",
     1,
-    []func(*Cpu){cbx0_1},
+    []func(*Cpu){no_op, cbx0_1},
   }
 
   cbx1_1 := func (cpu *Cpu) {
@@ -1028,12 +1051,17 @@ func MakeInstructionMap() map[string]Instruction {
     }
     cpu.clearFlagN()
     cpu.setFlagH()
+
+    if cpu.CurrentOpcode.Z == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+    }
   }
 
   instructionMap["CBX1"] = Instruction{
     "BIT y, r[z]",
     1,
-    []func(*Cpu){cbx1_1},
+    []func(*Cpu){no_op, cbx1_1},
   }
 
   cbx2_1 := func(cpu *Cpu) {
@@ -1042,12 +1070,17 @@ func MakeInstructionMap() map[string]Instruction {
     // make a mask with all 0's and a single 1 in the yth
     // place, then take complement
     reg.write(reg.read() & ^(0x1 << y))
+
+    if cpu.CurrentOpcode.Z == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+    }
   }
 
   instructionMap["CBX2"] = Instruction{
     "RES y, r[z]",
     1,
-    []func(*Cpu){cbx2_1},
+    []func(*Cpu){no_op, cbx2_1},
   }
 
   cbx3_1 := func(cpu *Cpu) {
@@ -1056,12 +1089,17 @@ func MakeInstructionMap() map[string]Instruction {
     // make a mask with all 0's and a single 1 in the yth
     // place, then OR it with reg
     reg.write(reg.read() | (0x1 << y))
+
+    if cpu.CurrentOpcode.Z == 6 {
+      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(no_op)
+    }
   }
 
   instructionMap["CBX3"] = Instruction{
     "SET y, r[z]",
     1,
-    []func(*Cpu){cbx3_1},
+    []func(*Cpu){no_op, cbx3_1},
   }
 
   // TODO: implement HALT bug
