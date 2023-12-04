@@ -207,9 +207,14 @@ func MakeInstructionMap() map[string]Instruction {
 
   // X=2
   x2_1 := func (cpu *Cpu) {
-    register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
     a := cpu.A.read()
-    b := register.read()
+    var b uint8
+    if (cpu.CurrentOpcode.Z != 6) {
+      register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+      b = register.read()
+    } else {
+      b = cpu.Bus.ReadFromBus(cpu.HL.read())
+    }
 
     cpu.DoAluInstruction(a, b)
     if cpu.CurrentOpcode.Z == 6 {
@@ -253,8 +258,10 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z6_1 := func (cpu *Cpu) {
-    cpu.GetRTableRegister(cpu.CurrentOpcode.Y).write(cpu.ReadN())
-    if cpu.CurrentOpcode.Y == 6 {
+    if cpu.CurrentOpcode.Y != 6 {
+      cpu.GetRTableRegister(cpu.CurrentOpcode.Y).write(cpu.ReadN())
+    } else if cpu.CurrentOpcode.Y == 6 {
+      cpu.Bus.WriteToBus(cpu.HL.read(), cpu.ReadN())
       cpu.ExecutionQueue.Push(no_op)
     }
   }
@@ -296,15 +303,23 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x1_1:= func (cpu *Cpu) {
-    from := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    to := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
-    // oh no, if it gets [HL] that's an extra 1-2 cycles compared
-    // to other values of Y / Z :(
-    // ideally this would happen _before_ x1_1 is executed
-    if cpu.CurrentOpcode.Y == 6 || cpu.CurrentOpcode.Z == 6 {
+    if cpu.CurrentOpcode.Y != 6 && cpu.CurrentOpcode.Z != 6 {
+      from := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+      to := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+      to.write(from.read())
+    } else if cpu.CurrentOpcode.Y == 6 {
+      from := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+      cpu.Bus.WriteToBus(cpu.HL.read(), from.read())
+
+      // ideally this would happen _before_ x1_1 is executed
+      cpu.ExecutionQueue.Push(no_op)
+    } else if cpu.CurrentOpcode.Z == 6 {
+      to := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+      to.write(cpu.Bus.ReadFromBus(cpu.HL.read()))
+
       cpu.ExecutionQueue.Push(no_op)
     }
-    to.write(from.read())
+    // i think it can't do LD (HL), (HL) so no statement for Y==6 & Z==6
   }
 
   instructionMap["X1"] = Instruction{
@@ -518,13 +533,19 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z5_1 := func(cpu *Cpu) {
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
-    if cpu.CurrentOpcode.Y == 6 {
+    var val uint8
+    if cpu.CurrentOpcode.Y != 6 {
+      reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+      reg.dec()
+      val = reg.read()
+    } else {
+      memAtHL := cpu.Bus.ReadFromBus(cpu.HL.read())
+      val = memAtHL - 1
+      cpu.Bus.WriteToBus(cpu.HL.read(), val)
+
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
     }
-    reg.dec()
-    val := reg.read()
 
     if val == 0 {
       cpu.setFlagZ()
@@ -548,13 +569,19 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z4_1 := func(cpu *Cpu) {
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
-    if cpu.CurrentOpcode.Y == 6 {
+    var val uint8
+    if cpu.CurrentOpcode.Y != 6 {
+      reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Y)
+      reg.inc()
+      val = reg.read()
+    } else {
+      memAtHL := cpu.Bus.ReadFromBus(cpu.HL.read())
+      val = memAtHL + 1
+      cpu.Bus.WriteToBus(cpu.HL.read(), val)
+
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
     }
-    reg.inc()
-    val := reg.read()
 
     if val == 0 {
       cpu.setFlagZ()
@@ -979,8 +1006,13 @@ func MakeInstructionMap() map[string]Instruction {
 
   // CB instructions
   cbx0_1 := func(cpu *Cpu) {
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    result := reg.read()
+    var result uint8
+    if cpu.CurrentOpcode.Z != 6 {
+      result = cpu.GetRTableRegister(cpu.CurrentOpcode.Z).read()
+    } else {
+      result = cpu.Bus.ReadFromBus(cpu.HL.read())
+    }
+
     y := cpu.CurrentOpcode.Y
     var carry uint8
     switch y {
@@ -1025,9 +1057,11 @@ func MakeInstructionMap() map[string]Instruction {
       cpu.clearFlagC()
     }
 
-    reg.write(result)
+    if cpu.CurrentOpcode.Z != 6 {
+      cpu.GetRTableRegister(cpu.CurrentOpcode.Z).write(result)
+    } else {
+      cpu.Bus.WriteToBus(cpu.HL.read(), result)
 
-    if cpu.CurrentOpcode.Z == 6 {
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
     }
@@ -1041,9 +1075,15 @@ func MakeInstructionMap() map[string]Instruction {
 
   cbx1_1 := func (cpu *Cpu) {
     oc := cpu.CurrentOpcode
-    register := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+    var value uint8
+    if oc.Z != 6 {
+      value = cpu.GetRTableRegister(cpu.CurrentOpcode.Z).read()
+    } else {
+      value = cpu.Bus.ReadFromBus(cpu.HL.read())
+    }
+
     //TODO: replace with Get/Set bit util functions; same with flags
-    result := (register.read() >> oc.Y) & 0x01
+    result := (value >> oc.Y) & 0x01
     if result == 0 {
       cpu.setFlagZ()
     } else {
@@ -1065,12 +1105,16 @@ func MakeInstructionMap() map[string]Instruction {
 
   cbx2_1 := func(cpu *Cpu) {
     y := cpu.CurrentOpcode.Y
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    // make a mask with all 0's and a single 1 in the yth
-    // place, then take complement
-    reg.write(reg.read() & ^(0x1 << y))
+    if cpu.CurrentOpcode.Z != 6 {
+      reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+      // make a mask with all 0's and a single 1 in the yth
+      // place, then take complement
+      reg.write(reg.read() & ^(0x1 << y))
+    } else {
+      value := cpu.Bus.ReadFromBus(cpu.HL.read())
+      result := value & ^(0x1 << y)
+      cpu.Bus.WriteToBus(cpu.HL.read(), result)
 
-    if cpu.CurrentOpcode.Z == 6 {
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
     }
@@ -1084,12 +1128,16 @@ func MakeInstructionMap() map[string]Instruction {
 
   cbx3_1 := func(cpu *Cpu) {
     y := cpu.CurrentOpcode.Y
-    reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
-    // make a mask with all 0's and a single 1 in the yth
-    // place, then OR it with reg
-    reg.write(reg.read() | (0x1 << y))
+    if cpu.CurrentOpcode.Z != 6 {
+      reg := cpu.GetRTableRegister(cpu.CurrentOpcode.Z)
+      // make a mask with all 0's and a single 1 in the yth
+      // place, then OR it with reg
+      reg.write(reg.read() | (0x1 << y))
+    } else {
+      value := cpu.Bus.ReadFromBus(cpu.HL.read())
+      result := (value | (0x1 << y))
+      cpu.Bus.WriteToBus(cpu.HL.read(), result)
 
-    if cpu.CurrentOpcode.Z == 6 {
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
     }

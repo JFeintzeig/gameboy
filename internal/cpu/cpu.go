@@ -556,10 +556,7 @@ func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   case 5:
     return &(cpu.L)
   case 6:
-    // TODO: fixthis
-    //return cpu.Bus.Get(cpu.HL.read())
-    return &(cpu.Bus.memory[cpu.HL.read()])
-    //panic("can't get (HL) using GetRTableRegister")
+    panic("can't get (HL) using GetRTableRegister")
   case 7:
     return &(cpu.A)
   }
