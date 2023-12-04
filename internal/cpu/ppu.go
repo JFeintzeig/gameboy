@@ -47,7 +47,6 @@ func NewPpu(busPointer *Bus) *Ppu {
   ppu.statInterruptLine = false
 
   ppu.bus = busPointer
-  ppu.vram = [8*1024]uint8{}
   ppu.screen = [160*144]uint8{}
 
   ppu.applyFetcherState = [N_FETCHER_STATES]func()bool{
@@ -63,7 +62,6 @@ func NewPpu(busPointer *Bus) *Ppu {
 type Ppu struct {
   bus Mediator
 
-  vram [8*1024]uint8
   screen [160*144]uint8
 
   nDots uint16
@@ -167,7 +165,7 @@ func (ppu *Ppu) doCycle() {
   // of 500, so HALT and interrupt handling must work somehow...
   // so maybe it does break out of HALT?
   // STAT: 001 never found in log...so somewhere before there it hangs...
-  //fmt.Printf("MODE: %d LY: %d IL: %t STAT: %08b IF: %08b IE: %08b\n", ppu.currentMode, ppu.LY.read(), ppu.statInterruptLine, ppu.readRegister(0xFF41), ppu.bus.ReadFromBus(0xFF0F), ppu.bus.ReadFromBus(0xFFFF))
+  //fmt.Printf("MODE: %d LY: %d IL: %t STAT: %08b IF: %08b IE: %08b\n", ppu.currentMode, ppu.LY.read(), ppu.statInterruptLine, ppu.read(0xFF41), ppu.bus.ReadFromBus(0xFF0F), ppu.bus.ReadFromBus(0xFFFF))
 
   if ppu.currentMode == M2 {
     // implement M2
@@ -217,16 +215,7 @@ func (ppu *Ppu) doCycle() {
   }
 }
 
-func (ppu *Ppu) readVRAM(address uint16) uint8 {
-  // TODO
-  return 0xFF
-}
-
-func (ppu *Ppu) writeVRAM(address uint16, value uint8) {
-  // TODO
-}
-
-func (ppu *Ppu) readRegister(address uint16) uint8 {
+func (ppu *Ppu) read(address uint16) uint8 {
   if address == 0xFF40 {
     var result uint8
     result = SetBitBool(result, 7, ppu.lcdEnable)
@@ -256,7 +245,7 @@ func (ppu *Ppu) readRegister(address uint16) uint8 {
   return 0xFF
 }
 
-func (ppu *Ppu) writeRegister(address uint16, value uint8) {
+func (ppu *Ppu) write(address uint16, value uint8) {
   if address == 0xFF40 {
     ppu.lcdEnable = GetBitBool(value, 7)
     ppu.windowMapAddress = GetBitBool(value, 6)

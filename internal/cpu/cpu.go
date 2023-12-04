@@ -538,7 +538,7 @@ func (cpu *Cpu) SetIME() {
   }
 }
 
-func (cpu *Cpu) GetRTableRegister(index uint8) MemoryByte {
+func (cpu *Cpu) GetRTableRegister(index uint8) *Register8 {
   if(index > 7) {
     panic("no register with index > 7")
   }
@@ -556,8 +556,10 @@ func (cpu *Cpu) GetRTableRegister(index uint8) MemoryByte {
   case 5:
     return &(cpu.L)
   case 6:
-    //return &(cpu.Bus.ReadFromBus(cpu.HL.read()))
+    // TODO: fixthis
+    //return cpu.Bus.Get(cpu.HL.read())
     return &(cpu.Bus.memory[cpu.HL.read()])
+    //panic("can't get (HL) using GetRTableRegister")
   case 7:
     return &(cpu.A)
   }
@@ -607,17 +609,9 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.rp2Table = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.AF}
   gb.InstructionMap = MakeInstructionMap()
 
-  bus := Bus{}
-
-  ppu := NewPpu(&bus)
-
-  timers := Timers{}
-  timers.bus = &bus
-
-  bus.ppu = ppu
-  bus.timers = &timers
-
-  gb.Bus = &bus
+  // returns a *Bus
+  bus := NewBus()
+  gb.Bus = bus
   gb.Bus.LoadROM(romFilePath)
 
   gb.IncrementPC = false

@@ -1,12 +1,5 @@
 package cpu
 
-type MemoryByte interface {
-  read() uint8
-  write(uint8)
-  inc()
-  dec()
-}
-
 type Register8 struct {
   value uint8
 }
