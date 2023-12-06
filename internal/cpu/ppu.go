@@ -2,6 +2,7 @@ package cpu
 
 import (
   "fmt"
+  //"runtime"
 )
 
 type Mode int
@@ -124,48 +125,63 @@ func (ppu *Ppu) GetTile() bool {
     bgTileMapAddress = 0x9C00
   }
 
-  var tileNum uint16
+  var tileMapAddressOffset uint16
 
   // TODO: is this if statement right?
   if ppu.XInsideWindow() {
     // TODO: window
-    tileNum = 0
+    tileMapAddressOffset = 0
   } else {
     // tile map is 32 x 32, so one X is 8 pixels or 1 fetcherX and
     // one Y is 32 LY's divided by 8 pixels
-    // something not right here...how does fetcherX increment?
     // TODO: how to increment fetcherX?
-    tileNum = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
-    tileNum += 32 * uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8
+    tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
+    tileMapAddressOffset += 32 * uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8
   }
 
   // keep it in the 32 x 32 range, so < 1024
-  tileNum &= 0x3FFF
+  tileMapAddressOffset &= 0x3FFF
 
-  ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileNum)
-  //fmt.Printf("%X %X\n", tileNum, ppu.CurrentTileIndex)
+  ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
+  //fmt.Printf("%X %X\n", tileMapAddressOffset, ppu.CurrentTileIndex)
   return true
 }
 
-func (ppu *Ppu) GetTileData() uint8 {
-  var baseAddress uint16 = 0x8800
+func (ppu *Ppu) GetTileData(offset uint16) uint8 {
+  var baseAddress uint16
+  var tileIndexOffset uint16
+  var tileData uint8
   if ppu.bgWinDataAddress {
     baseAddress = 0x8000
+    tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
+    tileData = ppu.bus.ReadFromBus(baseAddress + tileIndexOffset + offset)
+  } else {
+    baseAddress = 0x9000
+    if ppu.CurrentTileIndex > 0x7F {
+      tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
+      tileData = ppu.bus.ReadFromBus(baseAddress - tileIndexOffset + offset)
+    } else {
+      tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
+      tileData = ppu.bus.ReadFromBus(baseAddress + tileIndexOffset + offset)
+    }
   }
 
-  // TODO: finish this line, this is probably not right
-  offset := uint16(ppu.CurrentTileIndex)*16 + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
-  tileData := ppu.bus.ReadFromBus(baseAddress + offset)
   return tileData
 }
 
 func (ppu *Ppu) GetTileDataLow() bool {
-  ppu.CurrentTileDataLow = ppu.GetTileData()
+  ppu.CurrentTileDataLow = ppu.GetTileData(0)
   return true
 }
 
 func (ppu *Ppu) GetTileDataHigh() bool {
-  ppu.CurrentTileDataHigh = ppu.GetTileData()
+  ppu.CurrentTileDataHigh = ppu.GetTileData(1)
+
+  // first time this function is called for a given LY, restarts
+  if ppu.nDots <= 8 {
+    ppu.currentFetcherState = 3
+    return false
+  }
   return true
 }
 
@@ -187,11 +203,11 @@ func (ppu *Ppu) Push() bool {
 
   // TODO: is this right?
   ppu.fetcherX += 1
-  ppu.fetcherX = ppu.fetcherX % 32
   return true
 }
 
 func (ppu *Ppu) renderPixelToScreen() {
+  // TODO: SCX scrolling
   if ppu.bgFifo.Length() == 0 {
     return
   }
@@ -212,8 +228,8 @@ func (ppu *Ppu) renderPixelToScreen() {
   }
 
   coord := ppu.LY.read()*160 + ppu.renderX
+  ppu.screen[coord] = color
 
-  ppu.screen[ppu.LY.read()*160 + ppu.renderX] = color
   if color != 0 {
     //fmt.Printf("good: %d\n", ppu.screen[coord])
     ppu.writtenPixels[coord] = color
@@ -283,15 +299,27 @@ func (ppu *Ppu) doCycle() {
   } else if ppu.currentMode == M3 {
     // 4 dots worth
     ppu.doFetchRoutine()
-    ppu.doFetchRoutine()
+    ppu.renderPixelToScreen()
+    ppu.renderPixelToScreen()
 
-    for i := 0; i < 4; i++ {
-      ppu.renderPixelToScreen()
+    ppu.doFetchRoutine()
+    ppu.renderPixelToScreen()
+    ppu.renderPixelToScreen()
+
+    var screenSum int32 = 0
+    for _, pixel := range ppu.screen {
+      screenSum += int32(pixel)
+    }
+    if screenSum > 0 {
+      //fmt.Printf("**** i have a pixel *****\n")
+      //runtime.Breakpoint()
     }
 
     if ppu.nDots == 172 { // TODO: penalties
+      ppu.LogScreen()
       ppu.currentMode = M0
       ppu.currentFetcherState = 0
+      ppu.fetcherX = 0
       // don't reset nDots here, keep counting to end of line
     }
   } else if ppu.currentMode == M0 {
@@ -301,8 +329,6 @@ func (ppu *Ppu) doCycle() {
     if ppu.nDots == 376 {
       ppu.LY.inc()
       ppu.nDots = 0
-      // TODO: maybe need this?
-      ppu.fetcherX = 0
 
       if ppu.LY.read() == 144 {
         ppu.currentMode = M1
@@ -320,8 +346,6 @@ func (ppu *Ppu) doCycle() {
       ppu.nDots = 0
       ppu.LY.write(0)
       ppu.currentMode = M2
-
-      ppu.LogScreen()
 
     } else if ppu.nDots % 456 == 0 {
       // end of scanline
@@ -385,7 +409,7 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.mode0Int = GetBitBool(value,3)
     // Bits 2, 1, 0 are read-only
   } else if address == LY {
-    ppu.LY.write(value)
+    // LY is read-only
   } else if address == LYC {
     ppu.LYC.write(value)
   } else if address == SCX {
@@ -404,20 +428,29 @@ func (ppu *Ppu) PrintBgData() {
 }
 
 func (ppu *Ppu) LogScreen() {
-  fmt.Printf("log screen\n")
-  for i, val := range ppu.screen {
-    if val != 0 {
-      fmt.Printf("%d: %d\n",i, val)
-    }
-  }
-  //fmt.Printf("%v", ppu.screen)
-  //for i := 0; i < 144; i++ {
-  //  for j := 0; j < 160; j++ {
-  //    pixel := ppu.screen[i*159 + j]
-  //    if pixel != 0 {
-  //      fmt.Printf("%d",pixel)
-  //    }
+  //fmt.Printf("log screen\n")
+  //for i, val := range ppu.screen {
+  //  if val != 0 {
+  //    fmt.Printf("%d: %d\n",i, val)
   //  }
-  //  fmt.Printf("\n")
   //}
+  //fmt.Printf("%v", ppu.screen)
+  var screenSum int32 = 0
+  for _, pixel := range ppu.screen {
+    screenSum += int32(pixel)
+  }
+
+  if screenSum == 0 { return }
+
+  for i := 0; i < 144; i++ {
+    for j := 0; j < 160; j++ {
+      pixel := ppu.screen[i*159 + j]
+      if pixel != 0 {
+        fmt.Printf("%d",pixel)
+      } else {
+        fmt.Printf(" ")
+      }
+    }
+    fmt.Printf("\n")
+  }
 }

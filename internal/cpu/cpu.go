@@ -7,7 +7,7 @@ import (
 )
 
 //const ClockSpeed uint64 = 1048576 // M-cycle
-const ClockSpeed uint64 = 10000
+const ClockSpeed uint64 = 1100
 
 type Timers struct {
   bus Mediator
@@ -618,10 +618,10 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.IncrementPC = false
 
   // until video is implemented :(
-  gb.Bus.WriteToBus(0xFF44, 0xFF)
+  //gb.Bus.WriteToBus(0xFF44, 0xFF)
   // is this needed?
   // https://github.com/Gekkio/mooneye-test-suite#passfail-reporting
-  gb.Bus.WriteToBus(0xFF02, 0xFF)
+  //gb.Bus.WriteToBus(0xFF02, 0xFF)
 
   if useBootRom {
     gb.Bus.LoadBootROM()
