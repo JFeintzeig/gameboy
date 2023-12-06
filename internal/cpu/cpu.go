@@ -3,9 +3,11 @@ package cpu
 import (
   "encoding/hex"
   "fmt"
+  "time"
 )
 
-const CLOCK_SPEED uint64 = 4.19e6
+//const ClockSpeed uint64 = 1048576 // M-cycle
+const ClockSpeed uint64 = 10000
 
 type Timers struct {
   bus Mediator
@@ -422,6 +424,8 @@ func (cpu *Cpu) Execute() {
     microop := cpu.ExecutionQueue.Pop()
     microop(cpu)
     counter++
+
+    time.Sleep(time.Duration(1000/cpu.ClockSpeed) * time.Millisecond)
   }
 }
 
@@ -442,7 +446,7 @@ type Cpu struct {
 
   PC Register16
   SP Register16
-  clockSpeed uint64
+  ClockSpeed uint64
 
   CurrentOpcode Opcode
 
@@ -601,7 +605,7 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.SP = NewRegister16(&dummySP_S, &dummySP_P)
   gb.PC = NewRegister16(&dummyPC_P, &dummyPC_C)
 
-  gb.clockSpeed = CLOCK_SPEED
+  gb.ClockSpeed = ClockSpeed
   gb.rpTable = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.SP}
   gb.rp2Table = []*Register16{&gb.BC, &gb.DE, &gb.HL, &gb.AF}
   gb.InstructionMap = MakeInstructionMap()

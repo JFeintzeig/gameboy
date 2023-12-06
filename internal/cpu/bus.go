@@ -14,6 +14,10 @@ const (
   STAT = 0xFF41
   LY = 0xFF44
   LYC = 0xFF45
+  SCY = 0xFF42
+  SCX = 0xFF43
+  WY = 0xFF4A
+  WX = 0xFF4B
 )
 
 type Mediator interface {
@@ -34,7 +38,7 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       return bus.vram[address - 0x8000].read()
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
       return bus.timers.read(address)
-    case (address == LCDC || address == STAT || address == LY || address == LYC):
+    case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY):
       return bus.ppu.read(address)
     default:
       return bus.memory[address].read()
@@ -47,7 +51,7 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.vram[address - 0x8000].write(value)
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
       bus.timers.write(address, value)
-    case (address == LCDC || address == STAT || address == LY || address == LYC):
+    case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY):
       bus.ppu.write(address, value)
     default:
       bus.memory[address].write(value)
@@ -59,7 +63,7 @@ func (bus *Bus) LoadROM(romFilePath *string) {
   if err != nil {
     log.Fatal("can't find file")
   }
-  if len(data) != 32*1024 {
+  if len(data) > 32*1024 {
     log.Fatal("I can only do 32kb ROMs")
   }
   for address, element := range data {
