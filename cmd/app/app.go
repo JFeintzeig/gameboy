@@ -2,8 +2,12 @@ package main
 
 import (
   "flag"
+  "github.com/hajimehoshi/ebiten/v2"
   "jfeintzeig/gameboy/internal/cpu"
+  "log"
 )
+
+const display = false
 
 var (
   file *string
@@ -19,15 +23,19 @@ func main() {
 
   gb := cpu.NewGameBoy(file, false)
 
-  // ebiten.SetWindowSize(640, 320)
-  // ebiten.SetWindowTitle("Hello, World!")
-  // game, _ := display.NewGame(chip8)
+  if !display {
+    gb.Execute()
+  }
+
+  ebiten.SetWindowSize(800, 720)
+  ebiten.SetWindowTitle("Hello, World!")
+  game, _ := cpu.NewEbitenGame(gb)
 
   // infinite loop at chip8.clockSpeed
-  gb.Execute()
+  go gb.Execute()
 
   // display updates @ 60Hz via infinite loop in ebiten
-  // if err := ebiten.RunGame(game); err != nil {
-  //   log.Fatal(err)
-  // }
+  if err := ebiten.RunGame(game); err != nil {
+    log.Fatal(err)
+  }
 }

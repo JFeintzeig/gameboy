@@ -53,7 +53,6 @@ func NewPpu(busPointer *Bus) *Ppu {
 
   ppu.bus = busPointer
   ppu.screen = [160*144]uint8{}
-  ppu.writtenPixels = make(map[uint8]uint8)
 
   ppu.applyFetcherState = [N_FETCHER_STATES]func()bool{
     ppu.GetTile,
@@ -71,7 +70,6 @@ type Ppu struct {
   // LCD rendering
   screen [160*144]uint8
   renderX uint8
-  writtenPixels map[uint8]uint8
 
   nDots uint16
 
@@ -136,14 +134,14 @@ func (ppu *Ppu) GetTile() bool {
     // one Y is 32 LY's divided by 8 pixels
     // TODO: how to increment fetcherX?
     tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
-    tileMapAddressOffset += 32 * uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8
+    tileMapAddressOffset += 32 * (uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8)
   }
 
   // keep it in the 32 x 32 range, so < 1024
-  tileMapAddressOffset &= 0x3FFF
+  tileMapAddressOffset &= 0x3FF
 
   ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
-  //fmt.Printf("%X %X\n", tileMapAddressOffset, ppu.CurrentTileIndex)
+  fmt.Printf("SX:%3d SY:%3d Off:%3d Addr:%04X\n", ppu.SCX.read(), ppu.SCY.read(), tileMapAddressOffset, bgTileMapAddress + tileMapAddressOffset)
   return true
 }
 
@@ -151,20 +149,23 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
   var baseAddress uint16
   var tileIndexOffset uint16
   var tileData uint8
+  var finalAddress uint16
   if ppu.bgWinDataAddress {
     baseAddress = 0x8000
     tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
-    tileData = ppu.bus.ReadFromBus(baseAddress + tileIndexOffset + offset)
+    finalAddress = baseAddress + tileIndexOffset + offset
   } else {
     baseAddress = 0x9000
     if ppu.CurrentTileIndex > 0x7F {
       tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
-      tileData = ppu.bus.ReadFromBus(baseAddress - tileIndexOffset + offset)
+      finalAddress = baseAddress - tileIndexOffset + offset
     } else {
       tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
-      tileData = ppu.bus.ReadFromBus(baseAddress + tileIndexOffset + offset)
+      finalAddress = baseAddress + tileIndexOffset + offset
     }
   }
+  tileData = ppu.bus.ReadFromBus(finalAddress)
+  fmt.Printf("Tile: %X Base:%X Off: %X Plus:%X\n", finalAddress, baseAddress, tileIndexOffset, offset)
 
   return tileData
 }
@@ -177,11 +178,6 @@ func (ppu *Ppu) GetTileDataLow() bool {
 func (ppu *Ppu) GetTileDataHigh() bool {
   ppu.CurrentTileDataHigh = ppu.GetTileData(1)
 
-  // first time this function is called for a given LY, restarts
-  if ppu.nDots <= 8 {
-    ppu.currentFetcherState = 3
-    return false
-  }
   return true
 }
 
@@ -194,12 +190,15 @@ func (ppu *Ppu) Push() bool {
 
   // combine CurrenTileDataLow and High into pixels
   // push to fifo
+  fmt.Printf("L:%08b H:%08b: ", ppu.CurrentTileDataLow, ppu.CurrentTileDataHigh)
   for i := 0; i < 8; i ++ {
     low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
     high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
 
     ppu.bgFifo.Push(NewPixel(low, high))
+    fmt.Printf("%02b ", high << 1 | low)
   }
+  fmt.Printf("\n")
 
   // TODO: is this right?
   ppu.fetcherX += 1
@@ -212,7 +211,6 @@ func (ppu *Ppu) renderPixelToScreen() {
     return
   }
   if ppu.renderX > 159 {
-    ppu.renderX = 0
     return
   }
 
@@ -229,18 +227,6 @@ func (ppu *Ppu) renderPixelToScreen() {
 
   coord := ppu.LY.read()*160 + ppu.renderX
   ppu.screen[coord] = color
-
-  if color != 0 {
-    //fmt.Printf("good: %d\n", ppu.screen[coord])
-    ppu.writtenPixels[coord] = color
-  }
-
-  oldColor, ok := ppu.writtenPixels[coord]
-  if ok {
-    if oldColor != color {
-      //fmt.Printf("overwriting pixel %d from %d to %d\n",coord, oldColor, color)
-    }
-  }
 
   ppu.renderX += 1
 }
@@ -278,7 +264,6 @@ func (ppu *Ppu) maybeRequestInterrupt() {
 }
 
 func (ppu *Ppu) doCycle() {
-  //fmt.Printf("M:%d FS: %d LY:%d FX: %d TI: %d\n", ppu.currentMode, ppu.currentFetcherState, ppu.LY.read(), ppu.fetcherX, ppu.CurrentTileIndex)
   ppu.nDots += 4
 
   if ppu.LYC == ppu.LY {
@@ -297,6 +282,16 @@ func (ppu *Ppu) doCycle() {
       ppu.currentMode = M3
     }
   } else if ppu.currentMode == M3 {
+    // first 6 dots do nothing so by the
+    // time nDots = 8 we should have done 1 routine
+    if ppu.nDots == 4 {
+      return
+    }
+    if ppu.nDots == 8 {
+      ppu.doFetchRoutine()
+      return
+    }
+
     // 4 dots worth
     ppu.doFetchRoutine()
     ppu.renderPixelToScreen()
@@ -306,20 +301,23 @@ func (ppu *Ppu) doCycle() {
     ppu.renderPixelToScreen()
     ppu.renderPixelToScreen()
 
-    var screenSum int32 = 0
-    for _, pixel := range ppu.screen {
-      screenSum += int32(pixel)
-    }
-    if screenSum > 0 {
-      //fmt.Printf("**** i have a pixel *****\n")
-      //runtime.Breakpoint()
-    }
+    fmt.Printf("M:%d ND: %3d, FS: %3d LY:%3d FX: %3d RX: %3d, TI: %3d, Fifo: %d\n", ppu.currentMode, ppu.nDots, ppu.currentFetcherState, ppu.LY.read(), ppu.fetcherX, ppu.renderX, ppu.CurrentTileIndex, ppu.bgFifo.Length())
+
+    //var screenSum int32 = 0
+    //for _, pixel := range ppu.screen {
+    //  screenSum += int32(pixel)
+    //}
+    //if screenSum > 0 {
+    //  //fmt.Printf("**** i have a pixel *****\n")
+    //  //runtime.Breakpoint()
+    //}
 
     if ppu.nDots == 172 { // TODO: penalties
-      ppu.LogScreen()
+      //ppu.LogScreen()
       ppu.currentMode = M0
       ppu.currentFetcherState = 0
       ppu.fetcherX = 0
+      ppu.renderX = 0
       // don't reset nDots here, keep counting to end of line
     }
   } else if ppu.currentMode == M0 {
