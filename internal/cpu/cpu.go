@@ -6,8 +6,8 @@ import (
   "time"
 )
 
-//const ClockSpeed uint64 = 1048576 // M-cycle
-const ClockSpeed uint64 = 1100
+const ClockSpeed uint64 = 1048576 // M-cycle
+//const ClockSpeed uint64 = 1100
 
 type Timers struct {
   bus Mediator
@@ -381,7 +381,6 @@ func (cpu *Cpu) DoInterrupts() {
 }
 
 func (cpu *Cpu) Execute() {
-  // TODO: timing
   counter := 0
   for {
     cpu.LogSerial()
@@ -389,36 +388,9 @@ func (cpu *Cpu) Execute() {
     cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 
-    // FetchAndDecode and AddOpsToQueue -> micro op1 -> micro op2 -> ... ->
-    //   inc PC (depends on current Op) and FetchAndDecode and AddOpsToQueue
-    // each pass of loop takes one cycle
-    // the main loop first checks if we have something in the Queue
-    // if we do, then we execute one item from queue and return to top of loop
-    // if we don't, then we inc PC, execute FetchAndDecode, AddOpsToQueue, and thats one cycle
-    // FetchAndDecode sets cpu.CurrentOp, which is stable and used until the queue is empty
-    // at which point pc is inc'd and cpu.CurrentOp changed
-    // cold start the queue will be empty and so will currentOp
-    // we will inc PC, FetchAndDecode, AddOpsToQueue but we dont want to inc PC and can't
-    // because we don't have a currentOp
-
-    // potential alternative:
-    // - FetchAndDecode doesn't increment PC
-    // - after if statement, always pop+execute one f'n from the queue
-    // - then if queue is empty at end, increment PC before next iteration through loop
-    // * cold start will work: length is 0 and current opcode is blank, fetch+decode at
-    //   current PC, then increment PC based on nBytes of opcode
-    // * opcode that only takes 1 cycle will work fine: fetch+single execution stage
-    //   both occur in same iteration of loop
-    // * opcode that takes multiple cycles won't work fine: most have the fetch stage
-    //   taking 1 cycle, and i assumed that would exist outside ExecutionQueue.
-    // * opcode that jumps won't work fine b/c PC will still be incremented externally
-    // * what happens to SetIME in this scheme? b/c first if statement only happens at
-    //   cold start...
     if cpu.ExecutionQueue.Length() < 1 {
-        // probably put this into an interrupt handler eventually
         cpu.SetIME()
         cpu.FetchAndDecode()
-        //fmt.Printf("A: %X B: %X HL: %X (HL): %08b, INSTR %s %X\n", cpu.A.read(), cpu.B.read(), cpu.HL.read(), cpu.Bus.ReadFromBus(cpu.HL.read()), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.ReadNN())
     }
 
     microop := cpu.ExecutionQueue.Pop()

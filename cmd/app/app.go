@@ -7,7 +7,7 @@ import (
   "log"
 )
 
-const display = false
+const display = true
 
 var (
   file *string

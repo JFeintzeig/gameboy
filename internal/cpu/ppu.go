@@ -141,7 +141,7 @@ func (ppu *Ppu) GetTile() bool {
   tileMapAddressOffset &= 0x3FF
 
   ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
-  fmt.Printf("SX:%3d SY:%3d Off:%3d Addr:%04X\n", ppu.SCX.read(), ppu.SCY.read(), tileMapAddressOffset, bgTileMapAddress + tileMapAddressOffset)
+  //fmt.Printf("SX:%3d SY:%3d Off:%3d Addr:%04X\n", ppu.SCX.read(), ppu.SCY.read(), tileMapAddressOffset, bgTileMapAddress + tileMapAddressOffset)
   return true
 }
 
@@ -150,6 +150,9 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
   var tileIndexOffset uint16
   var tileData uint8
   var finalAddress uint16
+  // TODO: check that i'm getting these flags right for base address's
+  // for tile data and tile index!
+  // TODO: then maybe just write out full tilemap to screen?
   if ppu.bgWinDataAddress {
     baseAddress = 0x8000
     tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
@@ -165,7 +168,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
     }
   }
   tileData = ppu.bus.ReadFromBus(finalAddress)
-  fmt.Printf("Tile: %X Base:%X Off: %X Plus:%X\n", finalAddress, baseAddress, tileIndexOffset, offset)
+  //fmt.Printf("Tile: %X Base:%X Off: %X Plus:%X\n", finalAddress, baseAddress, tileIndexOffset, offset)
 
   return tileData
 }
@@ -190,15 +193,15 @@ func (ppu *Ppu) Push() bool {
 
   // combine CurrenTileDataLow and High into pixels
   // push to fifo
-  fmt.Printf("L:%08b H:%08b: ", ppu.CurrentTileDataLow, ppu.CurrentTileDataHigh)
+  //fmt.Printf("L:%08b H:%08b: ", ppu.CurrentTileDataLow, ppu.CurrentTileDataHigh)
   for i := 0; i < 8; i ++ {
     low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
     high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
 
     ppu.bgFifo.Push(NewPixel(low, high))
-    fmt.Printf("%02b ", high << 1 | low)
+    //fmt.Printf("%02b ", high << 1 | low)
   }
-  fmt.Printf("\n")
+  //fmt.Printf("\n")
 
   // TODO: is this right?
   ppu.fetcherX += 1
@@ -288,32 +291,24 @@ func (ppu *Ppu) doCycle() {
       return
     }
     if ppu.nDots == 8 {
-      ppu.doFetchRoutine()
+    // TODO: uncomment this!!
+      //ppu.doFetchRoutine()
       return
     }
 
     // 4 dots worth
-    ppu.doFetchRoutine()
-    ppu.renderPixelToScreen()
-    ppu.renderPixelToScreen()
+    // TODO: uncomment this!!
+    //ppu.doFetchRoutine()
+    //ppu.renderPixelToScreen()
+    //ppu.renderPixelToScreen()
 
-    ppu.doFetchRoutine()
-    ppu.renderPixelToScreen()
-    ppu.renderPixelToScreen()
+    //ppu.doFetchRoutine()
+    //ppu.renderPixelToScreen()
+    //ppu.renderPixelToScreen()
 
-    fmt.Printf("M:%d ND: %3d, FS: %3d LY:%3d FX: %3d RX: %3d, TI: %3d, Fifo: %d\n", ppu.currentMode, ppu.nDots, ppu.currentFetcherState, ppu.LY.read(), ppu.fetcherX, ppu.renderX, ppu.CurrentTileIndex, ppu.bgFifo.Length())
-
-    //var screenSum int32 = 0
-    //for _, pixel := range ppu.screen {
-    //  screenSum += int32(pixel)
-    //}
-    //if screenSum > 0 {
-    //  //fmt.Printf("**** i have a pixel *****\n")
-    //  //runtime.Breakpoint()
-    //}
+    //fmt.Printf("M:%d ND: %3d, FS: %3d LY:%3d FX: %3d RX: %3d, TI: %3d, Fifo: %d\n", ppu.currentMode, ppu.nDots, ppu.currentFetcherState, ppu.LY.read(), ppu.fetcherX, ppu.renderX, ppu.CurrentTileIndex, ppu.bgFifo.Length())
 
     if ppu.nDots == 172 { // TODO: penalties
-      //ppu.LogScreen()
       ppu.currentMode = M0
       ppu.currentFetcherState = 0
       ppu.fetcherX = 0
@@ -344,6 +339,8 @@ func (ppu *Ppu) doCycle() {
       ppu.nDots = 0
       ppu.LY.write(0)
       ppu.currentMode = M2
+
+      ppu.RenderEasy()
 
     } else if ppu.nDots % 456 == 0 {
       // end of scanline
@@ -422,33 +419,65 @@ func (ppu *Ppu) write(address uint16, value uint8) {
   // TODO
 }
 
-func (ppu *Ppu) PrintBgData() {
+// TODO: so with this logging for
+// hello world, i know the true values of:
+// tileMap addr -> tileMap index -> tileData addr ->
+// (x,y) pos on screen -> index in screen slice.
+// i need to log the same info in this routine vs.
+// in PPU and compare for each tile
+// another debug idea: add filters so PPU renders
+// just one tile, see where it ends up and how it looks
+func (ppu *Ppu) RenderEasy() {
+  address := uint16(0x9800)
+  pos := 0
+  // its a 32 x 32 tilemap
+  // but we dont want to draw past edge of screen
+  // which is 20 tiles horizontal and 18 vertical
+  for pos < 32*18 {
+    tileIndex := ppu.bus.ReadFromBus(address)
+    ppu.DrawTileData(uint16(tileIndex), pos)
+    address += 1
+    pos += 1
+  }
 }
 
-func (ppu *Ppu) LogScreen() {
-  //fmt.Printf("log screen\n")
-  //for i, val := range ppu.screen {
-  //  if val != 0 {
-  //    fmt.Printf("%d: %d\n",i, val)
-  //  }
-  //}
-  //fmt.Printf("%v", ppu.screen)
-  var screenSum int32 = 0
-  for _, pixel := range ppu.screen {
-    screenSum += int32(pixel)
+func (ppu *Ppu) DrawTileData(tileIndex uint16, pos int) {
+  // dont draw past 20 tiles horizontally
+  if pos % 32 > 19 {
+    return
   }
+  address := uint16(0x9000) + tileIndex*16
+  stopAddress := address + 16
+  // coord is in address space, so 2 X # of pixels
+  coord := pos*16
 
-  if screenSum == 0 { return }
+  fmt.Printf("*********************************\n")
+  fmt.Printf("%d %d\n", tileIndex, pos)
 
-  for i := 0; i < 144; i++ {
-    for j := 0; j < 160; j++ {
-      pixel := ppu.screen[i*159 + j]
-      if pixel != 0 {
-        fmt.Printf("%d",pixel)
-      } else {
-        fmt.Printf(" ")
-      }
+  for address < stopAddress {
+    tileNum := coord / 16  // 16 bytes per tile
+    xBase := (tileNum%32) * 8 // 32 sprites per line in tileMap
+    yBase := (tileNum/32) * 160 * 8 // 160 pixels per line
+    // should be between 0 and 1280 always
+    // should be multiple of 160 b/c its adding rows
+    offset := (160 * (coord - yBase%1280)/2) % 1280 // how many rows into sprite
+
+    low := ppu.bus.ReadFromBus(address)
+    address += 1
+    high := ppu.bus.ReadFromBus(address)
+    fmt.Printf("%02X %02X ", low, high)
+    address += 1
+
+    fmt.Printf("Coord:%X TileNum:%d xBase:%d yBase:%d offset:%d\n", coord, tileNum, xBase, yBase, offset)
+
+    for i:= 0; i < 8; i++ {
+      lb := (low >> (7-i)) & 0x01
+      hb := (high >> (7-i)) & 0x01
+      pixel := (hb << 1 | lb)
+      index := yBase + xBase + offset + i
+      ppu.screen[index] = pixel
     }
-    fmt.Printf("\n")
+
+    coord += 2
   }
 }
