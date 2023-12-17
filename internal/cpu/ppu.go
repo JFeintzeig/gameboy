@@ -141,7 +141,7 @@ func (ppu *Ppu) GetTile() bool {
   tileMapAddressOffset &= 0x3FF
 
   ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
-  fmt.Printf("index address @0x%04X index %d ", bgTileMapAddress + tileMapAddressOffset, ppu.CurrentTileIndex)
+  fmt.Printf("SCX %02X SCY %02X index address @0x%04X index %d ", ppu.SCX.read(), ppu.SCY.read(), bgTileMapAddress + tileMapAddressOffset, ppu.CurrentTileIndex)
   return true
 }
 
@@ -205,6 +205,18 @@ func (ppu *Ppu) Push() bool {
 
   // TODO: is this right?
   ppu.fetcherX += 1
+
+  // TODO: remove this and restore
+  // rendering to main loop
+  fmt.Printf("rendering...\n")
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
+  ppu.renderPixelToScreen()
 
   return true
 }
@@ -300,12 +312,14 @@ func (ppu *Ppu) doCycle() {
     // 4 dots worth
     ppu.doFetchRoutine()
 
-    ppu.renderPixelToScreen()
-    ppu.renderPixelToScreen()
+    // TODO: uncomment this!
+    //ppu.renderPixelToScreen()
+    //ppu.renderPixelToScreen()
 
     ppu.doFetchRoutine()
-    ppu.renderPixelToScreen()
-    ppu.renderPixelToScreen()
+    // TODO: uncomment this!
+    //ppu.renderPixelToScreen()
+    //ppu.renderPixelToScreen()
 
     //fmt.Printf("M:%d ND: %3d, FS: %3d LY:%3d FX: %3d RX: %3d, TI: %3d, Fifo: %d\n", ppu.currentMode, ppu.nDots, ppu.currentFetcherState, ppu.LY.read(), ppu.fetcherX, ppu.renderX, ppu.CurrentTileIndex, ppu.bgFifo.Length())
 
