@@ -69,7 +69,7 @@ type Ppu struct {
 
   // LCD rendering
   screen [160*144]uint8
-  renderX uint8
+  renderX uint16
 
   nDots uint16
 
@@ -141,7 +141,7 @@ func (ppu *Ppu) GetTile() bool {
   tileMapAddressOffset &= 0x3FF
 
   ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
-  //fmt.Printf("SX:%3d SY:%3d Off:%3d Addr:%04X\n", ppu.SCX.read(), ppu.SCY.read(), tileMapAddressOffset, bgTileMapAddress + tileMapAddressOffset)
+  fmt.Printf("index address @0x%04X index %d ", bgTileMapAddress + tileMapAddressOffset, ppu.CurrentTileIndex)
   return true
 }
 
@@ -168,7 +168,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
     }
   }
   tileData = ppu.bus.ReadFromBus(finalAddress)
-  //fmt.Printf("Tile: %X Base:%X Off: %X Plus:%X\n", finalAddress, baseAddress, tileIndexOffset, offset)
+  fmt.Printf("Tiledata @0x%04X: %02X\n", finalAddress, tileData)
 
   return tileData
 }
@@ -205,6 +205,7 @@ func (ppu *Ppu) Push() bool {
 
   // TODO: is this right?
   ppu.fetcherX += 1
+
   return true
 }
 
@@ -228,8 +229,9 @@ func (ppu *Ppu) renderPixelToScreen() {
     color = pixel.color
   }
 
-  coord := ppu.LY.read()*160 + ppu.renderX
+  coord := uint16(ppu.LY.read())*160 + ppu.renderX
   ppu.screen[coord] = color
+  fmt.Printf("yBase %d, xCoord %d\n", uint16(ppu.LY.read())*160, ppu.renderX)
 
   ppu.renderX += 1
 }
@@ -291,20 +293,19 @@ func (ppu *Ppu) doCycle() {
       return
     }
     if ppu.nDots == 8 {
-    // TODO: uncomment this!!
-      //ppu.doFetchRoutine()
+      ppu.doFetchRoutine()
       return
     }
 
     // 4 dots worth
-    // TODO: uncomment this!!
-    //ppu.doFetchRoutine()
-    //ppu.renderPixelToScreen()
-    //ppu.renderPixelToScreen()
+    ppu.doFetchRoutine()
 
-    //ppu.doFetchRoutine()
-    //ppu.renderPixelToScreen()
-    //ppu.renderPixelToScreen()
+    ppu.renderPixelToScreen()
+    ppu.renderPixelToScreen()
+
+    ppu.doFetchRoutine()
+    ppu.renderPixelToScreen()
+    ppu.renderPixelToScreen()
 
     //fmt.Printf("M:%d ND: %3d, FS: %3d LY:%3d FX: %3d RX: %3d, TI: %3d, Fifo: %d\n", ppu.currentMode, ppu.nDots, ppu.currentFetcherState, ppu.LY.read(), ppu.fetcherX, ppu.renderX, ppu.CurrentTileIndex, ppu.bgFifo.Length())
 
@@ -321,6 +322,7 @@ func (ppu *Ppu) doCycle() {
     // at end of routine, if 
     if ppu.nDots == 376 {
       ppu.LY.inc()
+      fmt.Printf("*************** inc LY: %d *************\n", ppu.LY.read())
       ppu.nDots = 0
 
       if ppu.LY.read() == 144 {
@@ -340,7 +342,7 @@ func (ppu *Ppu) doCycle() {
       ppu.LY.write(0)
       ppu.currentMode = M2
 
-      ppu.RenderEasy()
+      //ppu.RenderEasy()
 
     } else if ppu.nDots % 456 == 0 {
       // end of scanline
@@ -435,6 +437,8 @@ func (ppu *Ppu) RenderEasy() {
   // which is 20 tiles horizontal and 18 vertical
   for pos < 32*18 {
     tileIndex := ppu.bus.ReadFromBus(address)
+    fmt.Printf("*********************************\n")
+    fmt.Printf("Tile in pos %d, index address 0x%04x\n", pos, address)
     ppu.DrawTileData(uint16(tileIndex), pos)
     address += 1
     pos += 1
@@ -451,8 +455,7 @@ func (ppu *Ppu) DrawTileData(tileIndex uint16, pos int) {
   // coord is in address space, so 2 X # of pixels
   coord := pos*16
 
-  fmt.Printf("*********************************\n")
-  fmt.Printf("%d %d\n", tileIndex, pos)
+  fmt.Printf("index %d\n", tileIndex)
 
   for address < stopAddress {
     tileNum := coord / 16  // 16 bytes per tile
@@ -465,10 +468,10 @@ func (ppu *Ppu) DrawTileData(tileIndex uint16, pos int) {
     low := ppu.bus.ReadFromBus(address)
     address += 1
     high := ppu.bus.ReadFromBus(address)
-    fmt.Printf("%02X %02X ", low, high)
     address += 1
+    fmt.Printf("Tiledata @0x%04X: %02X %02X ", address-2, low, high)
 
-    fmt.Printf("Coord:%X TileNum:%d xBase:%d yBase:%d offset:%d\n", coord, tileNum, xBase, yBase, offset)
+    fmt.Printf("TileNum:%d xBase:%d yBase:%d offset:%d\n", tileNum, xBase, yBase, offset)
 
     for i:= 0; i < 8; i++ {
       lb := (low >> (7-i)) & 0x01
