@@ -114,25 +114,27 @@ type Ppu struct {
 
 func (ppu *Ppu) XInsideWindow() bool {
   // TODO
-  return false
+  if ppu.fetcherX*8 > ppu.WX.read() - 7 {
+    return true
+  } else {
+    return false
+  }
 }
 
 func (ppu *Ppu) GetTile() bool {
   var bgTileMapAddress uint16 = 0x9800
-  if (ppu.bgTileMap && !ppu.XInsideWindow()) || (ppu.windowTileMap && ppu.XInsideWindow()) {
+  if (ppu.bgTileMap && !(ppu.windowEnable && ppu.XInsideWindow())) || (ppu.windowEnable && ppu.windowTileMap && ppu.XInsideWindow()) {
     bgTileMapAddress = 0x9C00
   }
 
   var tileMapAddressOffset uint16
 
-  // TODO: is this if statement right?
-  if ppu.XInsideWindow() {
-    // TODO: window
-    tileMapAddressOffset = 0
+  if ppu.windowEnable && ppu.XInsideWindow() && ppu.LY.read() >= ppu.WY.read() {
+    tileMapAddressOffset = uint16(ppu.fetcherX - ppu.WX.read()/8)
+    tileMapAddressOffset += 32 * uint16(ppu.LY.read() - ppu.WY.read()) / 8
   } else {
     // tile map is 32 x 32, so one X is 8 pixels or 1 fetcherX and
     // one Y is 32 LY's divided by 8 pixels
-    // TODO: how to increment fetcherX?
     tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
     tileMapAddressOffset += 32 * (uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8)
   }
@@ -159,11 +161,15 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
     finalAddress = baseAddress + tileIndexOffset + offset
   } else {
     baseAddress = 0x9000
+    yOffset := uint16(ppu.LY.read() + ppu.SCY.read())
+    if ppu.windowEnable && ppu.LY.read() >= ppu.WY.read() {
+      yOffset = uint16(ppu.LY.read() - ppu.WY.read())
+    }
     if ppu.CurrentTileIndex > 0x7F {
-      tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
+      tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) + 2 * (yOffset % 8)
       finalAddress = baseAddress - tileIndexOffset + offset
     } else {
-      tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (uint16(ppu.LY.read() + ppu.SCY.read()) % 8)
+      tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (yOffset % 8)
       finalAddress = baseAddress + tileIndexOffset + offset
     }
   }
