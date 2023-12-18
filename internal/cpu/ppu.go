@@ -225,6 +225,7 @@ func (ppu *Ppu) renderPixelToScreen() {
   // window penalty
   if ppu.UsingWindow() && !ppu.renderingWindow {
     ppu.clearFifo()
+    ppu.currentFetcherState = 0
     ppu.renderingWindow = true
     return
   }
