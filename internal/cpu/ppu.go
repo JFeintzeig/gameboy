@@ -62,6 +62,13 @@ func NewPpu(busPointer *Bus) *Ppu {
   return &ppu
 }
 
+type Sprite struct {
+  yPos uint8
+  xPos uint8
+  tileIndex uint8
+  flags uint8
+}
+
 type Ppu struct {
   bus Mediator
 
@@ -84,6 +91,10 @@ type Ppu struct {
 
   bgFifo Fifo[*Pixel]
   objFifo Fifo[*Pixel]
+
+  // OAM scan
+  SpriteBuffer []Sprite
+  OAMOffset uint8
 
   // LCDC
   lcdEnable bool
@@ -281,6 +292,31 @@ func (ppu *Ppu) maybeRequestInterrupt() {
   ppu.statInterruptLine = newStatInterruptLine
 }
 
+func (ppu *Ppu) scanOAM() {
+  if len(ppu.SpriteBuffer) >= 10 {
+    return
+  }
+
+  yCoord := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  ppu.OAMOffset += 1
+  xCoord := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  ppu.OAMOffset += 1
+  tileIndex := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  ppu.OAMOffset += 1
+  flags := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  ppu.OAMOffset += 1
+
+  LYP16 := ppu.LY.read() + 16
+  // TODO: how determine 8 vs 16?
+  SpriteHeight := uint8(8)
+
+  if xCoord >= 0 && LYP16 >= yCoord && LYP16 <= yCoord + SpriteHeight {
+    sprite := Sprite{yCoord, xCoord, tileIndex, flags}
+    ppu.SpriteBuffer = append(ppu.SpriteBuffer, sprite)
+  }
+  return
+}
+
 func (ppu *Ppu) doCycle() {
   ppu.nDots += 4
 
@@ -293,11 +329,15 @@ func (ppu *Ppu) doCycle() {
   ppu.maybeRequestInterrupt()
 
   if ppu.currentMode == M2 {
-    // implement M2
+    // 4 dots worth
+    ppu.scanOAM()
+    ppu.scanOAM()
 
     if ppu.nDots == 80 {
       ppu.nDots = 0
+      ppu.OAMOffset = 0
       ppu.currentMode = M3
+      ppu.SpriteBuffer = make([]Sprite, 0)
     }
   } else if ppu.currentMode == M3 {
     // first 6 dots do nothing so by the

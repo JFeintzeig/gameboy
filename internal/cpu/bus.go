@@ -18,6 +18,7 @@ const (
   SCX = 0xFF43
   WY = 0xFF4A
   WX = 0xFF4B
+  OAM = 0xFE00
 )
 
 type Mediator interface {
