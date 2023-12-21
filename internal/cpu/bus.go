@@ -31,7 +31,6 @@ type Mediator interface {
 
 type Bus struct {
   memory [64*1024]Register8
-  vram [8*1024]Register8
   ppu *Ppu
   timers *Timers
 }
@@ -39,7 +38,17 @@ type Bus struct {
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
   switch {
     case address >= 0x8000 && address <= 0x9FFF:
-      return bus.vram[address - 0x8000].read()
+      if bus.ppu.currentMode == M3 {
+        return 0xFF
+      } else {
+        return bus.ppu.read(address)
+      }
+    case address >= 0xFE00 && address <= 0xFE9F:
+      if bus.ppu.currentMode == M2 || bus.ppu.currentMode == M3 {
+        return 0xFF
+      } else {
+        return bus.ppu.read(address)
+      }
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
       return bus.timers.read(address)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
@@ -52,7 +61,17 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
 func (bus *Bus) WriteToBus(address uint16, value uint8) {
   switch {
     case address >= 0x8000 && address <= 0x9FFF:
-      bus.vram[address - 0x8000].write(value)
+      if bus.ppu.currentMode == M3 {
+        return
+      } else {
+        bus.ppu.write(address, value)
+      }
+    case address >= 0xFE00 && address <= 0xFE9F:
+      if bus.ppu.currentMode == M2 || bus.ppu.currentMode == M3 {
+        return
+      } else {
+        bus.ppu.write(address, value)
+      }
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
       bus.timers.write(address, value)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):

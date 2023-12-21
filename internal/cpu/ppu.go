@@ -66,6 +66,9 @@ func (p palette) write(value uint8) {
 func NewPpu(busPointer *Bus) *Ppu {
   ppu := Ppu{}
 
+  ppu.vram = [8*1024]Register8{}
+  ppu.oam = [160]Register8{}
+
   ppu.currentMode = M2
   ppu.LY.write(0)
   ppu.currentFetcherState = 0
@@ -97,6 +100,9 @@ type Sprite struct {
 
 type Ppu struct {
   bus Mediator
+
+  vram [8*1024]Register8
+  oam [160]Register8
 
   // LCD rendering
   screen [160*144]uint8
@@ -187,10 +193,11 @@ func (ppu *Ppu) GetTile() bool {
       tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
       tileMapAddressOffset += 32 * (uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8)
     }
+    fmt.Printf("LY %d fetcherX %d tileMapAddr %04X ", ppu.LY.read(), ppu.fetcherX, bgTileMapAddress + tileMapAddressOffset)
 
     tileMapAddressOffset &= 0x3FF
 
-    ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
+    ppu.CurrentTileIndex = ppu.read(bgTileMapAddress + tileMapAddressOffset)
     return true
   }
 }
@@ -240,7 +247,11 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
       finalAddress = baseAddress + tileIndexOffset + offset
     }
   }
-  tileData = ppu.bus.ReadFromBus(finalAddress)
+  tileData = ppu.read(finalAddress)
+
+  if !ppu.fetchingSprite {
+    fmt.Printf("tileIndex %d tileAddr %04X tileData %02X ", ppu.CurrentTileIndex, finalAddress, tileData)
+  }
 
   return tileData
 }
@@ -295,13 +306,16 @@ func (ppu *Ppu) Push() bool {
     return false
   }
 
+  fmt.Printf("pixels: ")
   for i := 0; i < 8; i ++ {
     low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
     high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
 
     ppu.bgFifo.Push(&Pixel{color: high << 1 | low})
+    fmt.Printf("%d ", high << 1 | low)
   }
 
+  fmt.Printf("\n")
   ppu.fetcherX += 1
 
   return true
@@ -359,7 +373,6 @@ func (ppu *Ppu) renderPixelToScreen() {
 
   bgPixel := ppu.bgFifo.Pop()
   var color uint8 = 0x00
-  // TODO: get color from palette
   if ppu.bgWinDisplay {
     color = ppu.bgp[bgPixel.color]
   }
@@ -417,13 +430,13 @@ func (ppu *Ppu) scanOAM() {
     return
   }
 
-  yCoord := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  yCoord := ppu.read(OAM + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
-  xCoord := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  xCoord := ppu.read(OAM + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
-  tileIndex := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  tileIndex := ppu.read(OAM + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
-  flags := ppu.bus.ReadFromBus(OAM + uint16(ppu.OAMOffset))
+  flags := ppu.read(OAM + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
 
   LYP16 := ppu.LY.read() + 16
@@ -442,6 +455,23 @@ func (ppu *Ppu) scanOAM() {
 }
 
 func (ppu *Ppu) doCycle() {
+  if !ppu.lcdEnable {
+    ppu.nDots = 0
+    ppu.currentMode = M1
+    ppu.LY.write(0)
+    ppu.currentFetcherState = 0
+    ppu.statInterruptLine = false
+    ppu.screen = [160*144]uint8{}
+    ppu.OAMOffset = 0
+    ppu.fetcherX = 0
+    ppu.renderX = 0
+    ppu.scrollDiscardedX = 0
+    ppu.renderingWindow = false
+    ppu.fetchingSprite = false
+    ppu.clearFifo()
+    ppu.SpriteBuffer = make([]Sprite, 0)
+  }
+
   ppu.nDots += 4
 
   if ppu.LYC == ppu.LY {
@@ -528,7 +558,12 @@ func (ppu *Ppu) doCycle() {
 }
 
 func (ppu *Ppu) read(address uint16) uint8 {
-  if address == LCDC {
+  switch {
+  case address >= 0x8000 && address <= 0x9FFF:
+    return ppu.vram[address - 0x8000].read()
+  case address >= 0xFE00 && address <= 0xFE9F:
+    return ppu.oam[address - 0xFE00].read()
+  case address == LCDC:
     var result uint8
     result = SetBitBool(result, 7, ppu.lcdEnable)
     result = SetBitBool(result, 6, ppu.windowTileMap)
@@ -539,7 +574,7 @@ func (ppu *Ppu) read(address uint16) uint8 {
     result = SetBitBool(result, 1, ppu.spriteEnable)
     result = SetBitBool(result, 0, ppu.bgWinDisplay)
     return result
-  } else if address == STAT {
+  case address == STAT:
     var result uint8
     result = SetBitBool(result, 6, ppu.lycInt)
     result = SetBitBool(result, 5, ppu.mode2Int)
@@ -548,31 +583,37 @@ func (ppu *Ppu) read(address uint16) uint8 {
     result = SetBitBool(result, 2, ppu.LYCeqLY)
     result |= uint8(ppu.currentMode)
     return result
-  } else if address == 0xFF44 {
+  case address == 0xFF44:
     return ppu.LY.read()
-  } else if address == 0xFF45 {
+  case address == 0xFF45:
     return ppu.LYC.read()
-  } else if address == SCX {
+  case address == SCX:
     return ppu.SCX.read()
-  } else if address == SCY {
+  case address == SCY:
     return ppu.SCY.read()
-  } else if address == WX {
+  case address == WX:
     return ppu.WX.read()
-  } else if address == WY {
+  case address == WY:
     return ppu.WY.read()
-  } else if address == BGP {
+  case address == BGP:
     return ppu.bgp.read()
-  } else if address == OBP0 {
+  case address == OBP0:
     return ppu.obp0.read()
-  } else if address == OBP1 {
+  case address == OBP1:
     return ppu.obp1.read()
-  }
   // TODO
-  return 0xFF
+  default:
+    return 0xFF
+  }
 }
 
 func (ppu *Ppu) write(address uint16, value uint8) {
-  if address == LCDC {
+  switch {
+  case address >= 0x8000 && address <= 0x9FFF:
+    ppu.vram[address - 0x8000].write(value)
+  case address >= 0xFE00 && address <= 0xFE9F:
+    ppu.oam[address - 0xFE00].write(value)
+  case address == LCDC:
     ppu.lcdEnable = GetBitBool(value, 7)
     ppu.windowTileMap = GetBitBool(value, 6)
     ppu.windowEnable = GetBitBool(value, 5)
@@ -581,32 +622,33 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.objSize = GetBitBool(value, 2)
     ppu.spriteEnable = GetBitBool(value, 1)
     ppu.bgWinDisplay = GetBitBool(value, 0)
-  } else if address == STAT {
+  case address == STAT:
     ppu.lycInt = GetBitBool(value,6)
     ppu.mode2Int = GetBitBool(value,5)
     ppu.mode1Int = GetBitBool(value,4)
     ppu.mode0Int = GetBitBool(value,3)
     // Bits 2, 1, 0 are read-only
-  } else if address == LY {
+  case address == LY:
     // LY is read-only
-  } else if address == LYC {
+    return
+  case address == LYC:
     ppu.LYC.write(value)
-  } else if address == SCX {
+  case address == SCX:
     ppu.SCX.write(value)
-  } else if address == SCY {
+  case address == SCY:
     ppu.SCY.write(value)
-  } else if address == WX {
+  case address == WX:
     ppu.WX.write(value)
-  } else if address == WY {
+  case address == WY:
     ppu.WY.write(value)
-  } else if address == BGP {
+  case address == BGP:
     ppu.bgp.write(value)
-  } else if address == OBP0 {
+  case address == OBP0:
     ppu.obp0.write(value)
-  } else if address == OBP1 {
+  case address == OBP1:
     ppu.obp1.write(value)
-  }
   // TODO
+  }
 }
 
 // TODO: so with this logging for
@@ -624,7 +666,7 @@ func (ppu *Ppu) RenderEasy() {
   // but we dont want to draw past edge of screen
   // which is 20 tiles horizontal and 18 vertical
   for pos < 32*18 {
-    tileIndex := ppu.bus.ReadFromBus(address)
+    tileIndex := ppu.read(address)
     fmt.Printf("*********************************\n")
     fmt.Printf("Tile in pos %d, index address 0x%04x\n", pos, address)
     ppu.DrawTileData(uint16(tileIndex), pos)
@@ -653,9 +695,9 @@ func (ppu *Ppu) DrawTileData(tileIndex uint16, pos int) {
     // should be multiple of 160 b/c its adding rows
     offset := (160 * (coord - yBase%1280)/2) % 1280 // how many rows into sprite
 
-    low := ppu.bus.ReadFromBus(address)
+    low := ppu.read(address)
     address += 1
-    high := ppu.bus.ReadFromBus(address)
+    high := ppu.read(address)
     address += 1
     fmt.Printf("Tiledata @0x%04X: %02X %02X ", address-2, low, high)
 
