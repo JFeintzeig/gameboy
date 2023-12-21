@@ -37,6 +37,32 @@ type Pixel struct {
   priority uint8
 }
 
+type palette map[uint8]uint8
+
+func (p palette) read() uint8 {
+  var value uint8 = 0x0
+  if c0, ok := p[0]; ok {
+    value = value | c0
+  }
+  if c1, ok := p[1]; ok {
+    value = value | (c1 << 2)
+  }
+  if c2, ok := p[2]; ok {
+    value = value | (c2 << 4)
+  }
+  if c3, ok := p[3]; ok {
+    value = value | (c3 << 6)
+  }
+  return value
+}
+
+func (p palette) write(value uint8) {
+  p[0] = value & 0x03
+  p[1] = (value & 0x0C) >> 2
+  p[2] = (value & 0x30) >> 4
+  p[3] = (value & 0xC0) >> 6
+}
+
 func NewPpu(busPointer *Bus) *Ppu {
   ppu := Ppu{}
 
@@ -47,6 +73,10 @@ func NewPpu(busPointer *Bus) *Ppu {
 
   ppu.bus = busPointer
   ppu.screen = [160*144]uint8{}
+
+  ppu.bgp = make(palette)
+  ppu.obp0 = make(palette)
+  ppu.obp1 = make(palette)
 
   ppu.applyFetcherState = [N_FETCHER_STATES]func()bool{
     ppu.GetTile,
@@ -120,6 +150,11 @@ type Ppu struct {
   LYCeqLY bool
   currentMode Mode
   statInterruptLine bool
+
+  // palette's
+  bgp palette
+  obp0 palette
+  obp1 palette
 }
 
 func (ppu *Ppu) UsingWindow() bool {
@@ -326,12 +361,16 @@ func (ppu *Ppu) renderPixelToScreen() {
   var color uint8 = 0x00
   // TODO: get color from palette
   if ppu.bgWinDisplay {
-    color = bgPixel.color
+    color = ppu.bgp[bgPixel.color]
   }
   if ppu.spriteFifo.Length() > 0  && ppu.spriteEnable {
     sPixel := ppu.spriteFifo.Pop()
     if sPixel.color != 0x00 && !(sPixel.priority == 0x01 && bgPixel.color != 0x00) {
-      color = sPixel.color
+      if sPixel.palette == 0 {
+        color = ppu.obp0[sPixel.color]
+      } else {
+        color = ppu.obp1[sPixel.color]
+      }
     }
   }
 
@@ -521,6 +560,12 @@ func (ppu *Ppu) read(address uint16) uint8 {
     return ppu.WX.read()
   } else if address == WY {
     return ppu.WY.read()
+  } else if address == BGP {
+    return ppu.bgp.read()
+  } else if address == OBP0 {
+    return ppu.obp0.read()
+  } else if address == OBP1 {
+    return ppu.obp1.read()
   }
   // TODO
   return 0xFF
@@ -554,6 +599,12 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.WX.write(value)
   } else if address == WY {
     ppu.WY.write(value)
+  } else if address == BGP {
+    ppu.bgp.write(value)
+  } else if address == OBP0 {
+    ppu.obp0.write(value)
+  } else if address == OBP1 {
+    ppu.obp1.write(value)
   }
   // TODO
 }

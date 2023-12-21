@@ -19,6 +19,9 @@ const (
   WY = 0xFF4A
   WX = 0xFF4B
   OAM = 0xFE00
+  BGP = 0xFF47
+  OBP0 = 0xFF48
+  OBP1 = 0xFF49
 )
 
 type Mediator interface {
@@ -39,7 +42,7 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       return bus.vram[address - 0x8000].read()
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
       return bus.timers.read(address)
-    case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY):
+    case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       return bus.ppu.read(address)
     default:
       return bus.memory[address].read()
@@ -52,7 +55,7 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.vram[address - 0x8000].write(value)
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
       bus.timers.write(address, value)
-    case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY):
+    case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       bus.ppu.write(address, value)
     default:
       bus.memory[address].write(value)
