@@ -1,8 +1,8 @@
 package cpu
 
 import (
-  "fmt"
-  //"runtime"
+	"fmt"
+	//"runtime"
 )
 
 type Mode int
@@ -34,11 +34,7 @@ func (fs *FetcherState) next() FetcherState {
 type Pixel struct {
   color uint8
   palette uint8
-  bgPriority uint8
-}
-
-func NewPixel(lowData uint8, highData uint8) *Pixel {
-  return &Pixel{color: highData << 1 | lowData}
+  priority uint8
 }
 
 func NewPpu(busPointer *Bus) *Ppu {
@@ -172,7 +168,20 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
 
   if ppu.fetchingSprite {
     baseAddress = 0x8000
-    tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex)
+
+    var SpriteHeight uint16
+    if ppu.objSize {
+      SpriteHeight = 16
+    } else {
+      SpriteHeight = 8
+    }
+    yOffset := uint16(ppu.LY.read()) % SpriteHeight
+    // Y flip
+    if GetBitBool(ppu.SpriteToRender.flags, 6) {
+      yOffset = SpriteHeight - yOffset - 1
+    }
+
+    tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * yOffset
     finalAddress = baseAddress + tileIndexOffset + offset
   } else if ppu.bgWinDataAddress {
     baseAddress = 0x8000
@@ -216,14 +225,34 @@ func (ppu *Ppu) Push() bool {
   if ppu.fetchingSprite {
     // TODO: mixing! edge cases!
     for i := 0; i < 8; i ++ {
-      low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
-      high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
-      ppu.spriteFifo.Push(NewPixel(low, high))
+      // if xPos is 3, only last 3 pixels are rendered
+      if int(ppu.SpriteToRender.xPos) + i - 8 < 0 {
+        continue
+      }
+      // don't load pixels if slot already occupied
+      // how to do this? b/c spriteFifo.Length() will change as we push!
+      if i < ppu.spriteFifo.Length() {
+        continue
+      }
+
+      // X flip
+      var offset int
+      if GetBitBool(ppu.SpriteToRender.flags, 5) {
+        offset = i
+      } else {
+        offset = 7-i
+      }
+
+      low := (ppu.CurrentTileDataLow >> offset) & 0x01
+      high := (ppu.CurrentTileDataHigh >> offset) & 0x01
+      palette := GetBit(ppu.SpriteToRender.flags, 4)
+      priority := GetBit(ppu.SpriteToRender.flags, 7)
+      ppu.spriteFifo.Push(&Pixel{color: high << 1 | low, palette: palette, priority: priority})
     }
 
-    // NB: after this we're done fetching this sprite
-    // NB: don't increment fetcherX
+    // after this we're done fetching this sprite
     ppu.fetchingSprite = false
+    // we don't increment fetcherX b/c thats for background
     return true
   }
 
@@ -235,7 +264,7 @@ func (ppu *Ppu) Push() bool {
     low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
     high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
 
-    ppu.bgFifo.Push(NewPixel(low, high))
+    ppu.bgFifo.Push(&Pixel{color: high << 1 | low})
   }
 
   ppu.fetcherX += 1
@@ -249,14 +278,13 @@ func (ppu *Ppu) clearFifo() {
   }
 }
 
-func (ppu *Ppu) isTimeToRenderSprite() (bool, Sprite) {
-  for _, sp := range ppu.SpriteBuffer {
+func (ppu *Ppu) isTimeToRenderSprite() (bool, int) {
+  for idx, sp := range ppu.SpriteBuffer {
     if sp.xPos <= uint8(ppu.renderX) + 8 {
-      ppu.SpriteToRender = sp
-      return true, sp
+      return true, idx
     }
   }
-  return false, Sprite{}
+  return false, 0
 }
 
 func (ppu *Ppu) renderPixelToScreen() {
@@ -277,11 +305,12 @@ func (ppu *Ppu) renderPixelToScreen() {
     return
   }
   // initiate sprite fetch
-  if isTime, sprite := ppu.isTimeToRenderSprite(); isTime {
+  if isTime, spriteIdx := ppu.isTimeToRenderSprite(); isTime {
     ppu.fetchingSprite = true
-    ppu.SpriteToRender = sprite
+    ppu.SpriteToRender = ppu.SpriteBuffer[spriteIdx]
     ppu.currentFetcherState = GetTile
-    // TODO: remove `sprite` from `SpriteBuffer`!!!
+    // remove `sprite` from `SpriteBuffer`
+    ppu.SpriteBuffer = append(ppu.SpriteBuffer[:spriteIdx], ppu.SpriteBuffer[spriteIdx+1:]...)
     return
   }
   // rendering paused until done fetching sprite
@@ -294,8 +323,9 @@ func (ppu *Ppu) renderPixelToScreen() {
   }
 
   pixel := ppu.bgFifo.Pop()
+  // TODO: mix sprite pixel!
 
-  // TODO: get color from pallete
+  // TODO: get color from palette
   var color uint8
   if !ppu.bgWinDisplay {
     color = 0x00
@@ -356,8 +386,12 @@ func (ppu *Ppu) scanOAM() {
   ppu.OAMOffset += 1
 
   LYP16 := ppu.LY.read() + 16
-  // TODO: how determine 8 vs 16?
-  SpriteHeight := uint8(8)
+  var SpriteHeight uint8
+  if ppu.objSize {
+    SpriteHeight = 16
+  } else {
+    SpriteHeight = 8
+  }
 
   if xCoord >= 0 && LYP16 >= yCoord && LYP16 <= yCoord + SpriteHeight {
     sprite := Sprite{yCoord, xCoord, tileIndex, flags}
