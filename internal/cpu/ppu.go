@@ -249,14 +249,14 @@ func (ppu *Ppu) clearFifo() {
   }
 }
 
-func (ppu *Ppu) isTimeToRenderSprite() bool {
+func (ppu *Ppu) isTimeToRenderSprite() (bool, Sprite) {
   for _, sp := range ppu.SpriteBuffer {
     if sp.xPos <= uint8(ppu.renderX) + 8 {
       ppu.SpriteToRender = sp
-      return true
+      return true, sp
     }
   }
-  return false
+  return false, Sprite{}
 }
 
 func (ppu *Ppu) renderPixelToScreen() {
@@ -277,9 +277,11 @@ func (ppu *Ppu) renderPixelToScreen() {
     return
   }
   // initiate sprite fetch
-  if ppu.isTimeToRenderSprite() {
+  if isTime, sprite := ppu.isTimeToRenderSprite(); isTime {
     ppu.fetchingSprite = true
+    ppu.SpriteToRender = sprite
     ppu.currentFetcherState = GetTile
+    // TODO: remove `sprite` from `SpriteBuffer`!!!
     return
   }
   // rendering paused until done fetching sprite
