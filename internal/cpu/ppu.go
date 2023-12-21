@@ -102,7 +102,7 @@ type Ppu struct {
   bgWinDataAddress bool
   bgTileMap bool
   objSize bool
-  objEnable bool
+  spriteEnable bool
   bgWinDisplay bool
 
   LY Register8
@@ -322,15 +322,17 @@ func (ppu *Ppu) renderPixelToScreen() {
     return
   }
 
-  pixel := ppu.bgFifo.Pop()
-  // TODO: mix sprite pixel!
-
+  bgPixel := ppu.bgFifo.Pop()
+  var color uint8 = 0x00
   // TODO: get color from palette
-  var color uint8
-  if !ppu.bgWinDisplay {
-    color = 0x00
-  } else {
-    color = pixel.color
+  if ppu.bgWinDisplay {
+    color = bgPixel.color
+  }
+  if ppu.spriteFifo.Length() > 0  && ppu.spriteEnable {
+    sPixel := ppu.spriteFifo.Pop()
+    if sPixel.color != 0x00 && !(sPixel.priority == 0x01 && bgPixel.color != 0x00) {
+      color = sPixel.color
+    }
   }
 
   coord := uint16(ppu.LY.read())*160 + ppu.renderX
@@ -420,7 +422,6 @@ func (ppu *Ppu) doCycle() {
       ppu.nDots = 0
       ppu.OAMOffset = 0
       ppu.currentMode = M3
-      ppu.SpriteBuffer = make([]Sprite, 0)
     }
   } else if ppu.currentMode == M3 {
     // first 6 dots do nothing so by the
@@ -455,10 +456,11 @@ func (ppu *Ppu) doCycle() {
   } else if ppu.currentMode == M0 {
     // HBlank - do stuff
 
-    // at end of routine, if 
+    // end of scanline
     if ppu.nDots == 376 {
       ppu.LY.inc()
       ppu.nDots = 0
+      ppu.SpriteBuffer = make([]Sprite, 0)
 
       if ppu.LY.read() == 144 {
         ppu.currentMode = M1
@@ -495,7 +497,7 @@ func (ppu *Ppu) read(address uint16) uint8 {
     result = SetBitBool(result, 4, ppu.bgWinDataAddress)
     result = SetBitBool(result, 3, ppu.bgTileMap)
     result = SetBitBool(result, 2, ppu.objSize)
-    result = SetBitBool(result, 1, ppu.objEnable)
+    result = SetBitBool(result, 1, ppu.spriteEnable)
     result = SetBitBool(result, 0, ppu.bgWinDisplay)
     return result
   } else if address == STAT {
@@ -532,7 +534,7 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.bgWinDataAddress = GetBitBool(value, 4)
     ppu.bgTileMap = GetBitBool(value, 3)
     ppu.objSize = GetBitBool(value, 2)
-    ppu.objEnable = GetBitBool(value, 1)
+    ppu.spriteEnable = GetBitBool(value, 1)
     ppu.bgWinDisplay = GetBitBool(value, 0)
   } else if address == STAT {
     ppu.lycInt = GetBitBool(value,6)
