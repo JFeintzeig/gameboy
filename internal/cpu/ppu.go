@@ -87,10 +87,13 @@ type Ppu struct {
   CurrentTileDataLow uint8
   CurrentTileDataHigh uint8
 
+  fetchingSprite bool
+  SpriteToRender Sprite
+
   applyFetcherState [4]func() bool
 
   bgFifo Fifo[*Pixel]
-  objFifo Fifo[*Pixel]
+  spriteFifo Fifo[*Pixel]
 
   // OAM scan
   SpriteBuffer []Sprite
@@ -133,27 +136,32 @@ func (ppu *Ppu) UsingWindow() bool {
 }
 
 func (ppu *Ppu) GetTile() bool {
-  var bgTileMapAddress uint16 = 0x9800
-  if (ppu.bgTileMap && !ppu.UsingWindow()) || (ppu.UsingWindow() && ppu.windowTileMap) {
-    bgTileMapAddress = 0x9C00
-  }
-
-  var tileMapAddressOffset uint16
-
-  if ppu.UsingWindow() {
-    tileMapAddressOffset = uint16(ppu.fetcherX - ppu.WX.read()/8)
-    tileMapAddressOffset += 32 * (uint16(ppu.LY.read() - ppu.WY.read()) / 8)
+  if ppu.fetchingSprite {
+    ppu.CurrentTileIndex = ppu.SpriteToRender.tileIndex
+    return true
   } else {
-    // tile map is 32 x 32, so one X is 8 pixels or 1 fetcherX and
-    // one Y is 32 LY's divided by 8 pixels
-    tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
-    tileMapAddressOffset += 32 * (uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8)
+    var bgTileMapAddress uint16 = 0x9800
+    if (ppu.bgTileMap && !ppu.UsingWindow()) || (ppu.UsingWindow() && ppu.windowTileMap) {
+      bgTileMapAddress = 0x9C00
+    }
+
+    var tileMapAddressOffset uint16
+
+    if ppu.UsingWindow() {
+      tileMapAddressOffset = uint16(ppu.fetcherX - ppu.WX.read()/8)
+      tileMapAddressOffset += 32 * (uint16(ppu.LY.read() - ppu.WY.read()) / 8)
+    } else {
+      // tile map is 32 x 32, so one X is 8 pixels or 1 fetcherX and
+      // one Y is 32 LY's divided by 8 pixels
+      tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
+      tileMapAddressOffset += 32 * (uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8)
+    }
+
+    tileMapAddressOffset &= 0x3FF
+
+    ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
+    return true
   }
-
-  tileMapAddressOffset &= 0x3FF
-
-  ppu.CurrentTileIndex = ppu.bus.ReadFromBus(bgTileMapAddress + tileMapAddressOffset)
-  return true
 }
 
 func (ppu *Ppu) GetTileData(offset uint16) uint8 {
@@ -162,7 +170,11 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
   var tileData uint8
   var finalAddress uint16
 
-  if ppu.bgWinDataAddress {
+  if ppu.fetchingSprite {
+    baseAddress = 0x8000
+    tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex)
+    finalAddress = baseAddress + tileIndexOffset + offset
+  } else if ppu.bgWinDataAddress {
     baseAddress = 0x8000
     yOffset := uint16(ppu.LY.read() + ppu.SCY.read())
     if ppu.UsingWindow() {
@@ -201,6 +213,20 @@ func (ppu *Ppu) GetTileDataHigh() bool {
 }
 
 func (ppu *Ppu) Push() bool {
+  if ppu.fetchingSprite {
+    // TODO: mixing! edge cases!
+    for i := 0; i < 8; i ++ {
+      low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
+      high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
+      ppu.spriteFifo.Push(NewPixel(low, high))
+    }
+
+    // NB: after this we're done fetching this sprite
+    // NB: don't increment fetcherX
+    ppu.fetchingSprite = false
+    return true
+  }
+
   if ppu.bgFifo.Length() > 0 {
     return false
   }
@@ -223,6 +249,16 @@ func (ppu *Ppu) clearFifo() {
   }
 }
 
+func (ppu *Ppu) isTimeToRenderSprite() bool {
+  for _, sp := range ppu.SpriteBuffer {
+    if sp.xPos <= uint8(ppu.renderX) + 8 {
+      ppu.SpriteToRender = sp
+      return true
+    }
+  }
+  return false
+}
+
 func (ppu *Ppu) renderPixelToScreen() {
   if ppu.bgFifo.Length() == 0 {
     return
@@ -236,10 +272,21 @@ func (ppu *Ppu) renderPixelToScreen() {
   // window penalty
   if ppu.UsingWindow() && !ppu.renderingWindow {
     ppu.clearFifo()
-    ppu.currentFetcherState = 0
+    ppu.currentFetcherState = GetTile
     ppu.renderingWindow = true
     return
   }
+  // initiate sprite fetch
+  if ppu.isTimeToRenderSprite() {
+    ppu.fetchingSprite = true
+    ppu.currentFetcherState = GetTile
+    return
+  }
+  // rendering paused until done fetching sprite
+  if ppu.fetchingSprite {
+    return
+  }
+
   if ppu.renderX > 159 {
     return
   }
