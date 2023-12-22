@@ -22,6 +22,7 @@ const (
   BGP = 0xFF47
   OBP0 = 0xFF48
   OBP1 = 0xFF49
+  BANK = 0xFF50
 )
 
 type Mediator interface {
@@ -33,6 +34,7 @@ type Bus struct {
   memory [64*1024]Register8
   ppu *Ppu
   timers *Timers
+  romFilePath string
 }
 
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
@@ -76,13 +78,18 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.timers.write(address, value)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       bus.ppu.write(address, value)
+    case address == BANK:
+      if bus.memory[address].read() == 0 {
+        bus.LoadROM()
+      }
+      bus.memory[address].write(value)
     default:
       bus.memory[address].write(value)
   }
 }
 
-func (bus *Bus) LoadROM(romFilePath *string) {
-  data, err := ioutil.ReadFile(*romFilePath)
+func (bus *Bus) LoadROM() {
+  data, err := ioutil.ReadFile(bus.romFilePath)
   if err != nil {
     log.Fatal("can't find file")
   }
@@ -109,7 +116,7 @@ func (bus *Bus) LoadBootROM() {
   }
 }
 
-func NewBus() *Bus {
+func NewBus(romFilePath string) *Bus {
   // need to initialize memory
 
   bus := Bus{}
@@ -121,6 +128,8 @@ func NewBus() *Bus {
   timers := Timers{}
   timers.bus = &bus
   bus.timers = &timers
+
+  bus.romFilePath = romFilePath
 
   return &bus
 }

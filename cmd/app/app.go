@@ -21,7 +21,7 @@ func init() {
 func main() {
   flag.Parse()
 
-  gb := cpu.NewGameBoy(file, false)
+  gb := cpu.NewGameBoy(file, true)
 
   if !display {
     gb.Execute()
