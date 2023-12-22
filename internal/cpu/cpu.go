@@ -303,16 +303,10 @@ func (cpu *Cpu) FetchAndDecode() {
         cpu.PC.inc()
       }
     }
-    // next time we want to increment it, unless told otherwise
     cpu.IncrementPC = true
 
     oc := ByteToOpcode(cpu.Bus.ReadFromBus(cpu.PC.read()), false)
 
-    // hmmm...if opcode isn't implemented, this sorta breaks because
-    // the queue stays empty, FetchAndDecode() is called again
-    // for the same PC, which reads the opcode but doesn't realize
-    // its prefixed...will this ever be a problem when all opcodes
-    // are implemented?
     if oc.Full == 0xCB {
       cpu.PC.inc()
       oc = ByteToOpcode(cpu.Bus.ReadFromBus(cpu.PC.read()), true)
@@ -385,6 +379,18 @@ func (cpu *Cpu) Execute() {
   for {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
+    // TODO: need to figure out _when_ to do interrupts!!!
+    // Timers -> Int -> PPU -> CPU: acid2 has no background, appears to hit LC_08 but not LC_10
+    //    why? looks like i never get LYC == LY int again, even though PPU appears to fire it by
+    //    setting IF. confirm in PPU logging that IE and IF look good at LYC=16. weird thing
+    //    is that the LYC == LY @ 08 interrupt appears to work as desired. so what's wrong?
+    //    ohh maybe RETI not setting IME correctly?
+    //    OK SetIME is broken: i assume PC will be incremented but RETI goes somewhere completely different,
+    //    which actually just runs HALT in a loop until an interrupt is fired+handled, but interrupt will never
+    //    be handled because IME is still false because PC was never incremented. need to refactor SetIME and EI
+    //    and RETI so it waits one instruction, not a specific PC
+    //    
+    // Timers -> PPU -> Int -> CPU: acid2 stuck in HALT after jumping to LC_08
     cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 
@@ -583,9 +589,9 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.InstructionMap = MakeInstructionMap()
 
   // returns a *Bus
-  bus := NewBus()
+  bus := NewBus(*romFilePath)
   gb.Bus = bus
-  gb.Bus.LoadROM(romFilePath)
+  gb.Bus.LoadROM()
 
   gb.IncrementPC = false
 
