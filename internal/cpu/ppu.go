@@ -456,25 +456,12 @@ func (ppu *Ppu) scanOAM() {
 
 func (ppu *Ppu) doCycle() {
   if !ppu.lcdEnable {
-    ppu.nDots = 0
-    ppu.currentMode = M1
-    ppu.LY.write(0)
-    ppu.currentFetcherState = 0
-    ppu.statInterruptLine = false
-    ppu.screen = [160*144]uint8{}
-    ppu.OAMOffset = 0
-    ppu.fetcherX = 0
-    ppu.renderX = 0
-    ppu.scrollDiscardedX = 0
-    ppu.renderingWindow = false
-    ppu.fetchingSprite = false
-    ppu.clearFifo()
-    ppu.SpriteBuffer = make([]Sprite, 0)
+    return
   }
 
   ppu.nDots += 4
 
-  if ppu.LYC == ppu.LY {
+  if ppu.LYC.read() == ppu.LY.read() {
     ppu.LYCeqLY = true
   } else {
     ppu.LYCeqLY = false
@@ -557,6 +544,23 @@ func (ppu *Ppu) doCycle() {
   }
 }
 
+func (ppu *Ppu) clearState() {
+    ppu.nDots = 0
+    ppu.currentMode = M1
+    ppu.LY.write(0)
+    ppu.currentFetcherState = 0
+    ppu.statInterruptLine = false
+    ppu.screen = [160*144]uint8{}
+    ppu.OAMOffset = 0
+    ppu.fetcherX = 0
+    ppu.renderX = 0
+    ppu.scrollDiscardedX = 0
+    ppu.renderingWindow = false
+    ppu.fetchingSprite = false
+    ppu.clearFifo()
+    ppu.SpriteBuffer = make([]Sprite, 0)
+}
+
 func (ppu *Ppu) read(address uint16) uint8 {
   switch {
   case address >= 0x8000 && address <= 0x9FFF:
@@ -622,11 +626,15 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.objSize = GetBitBool(value, 2)
     ppu.spriteEnable = GetBitBool(value, 1)
     ppu.bgWinDisplay = GetBitBool(value, 0)
+    if !ppu.lcdEnable {
+      ppu.clearState()
+    }
   case address == STAT:
     ppu.lycInt = GetBitBool(value,6)
     ppu.mode2Int = GetBitBool(value,5)
     ppu.mode1Int = GetBitBool(value,4)
     ppu.mode0Int = GetBitBool(value,3)
+  fmt.Printf("writing STAT %08b\n", value)
     // Bits 2, 1, 0 are read-only
   case address == LY:
     // LY is read-only
