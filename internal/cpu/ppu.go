@@ -165,9 +165,9 @@ type Ppu struct {
   obp1 palette
 }
 
-func (ppu *Ppu) UsingWindow() bool {
+func (ppu *Ppu) InsideWindow() bool {
   // TODO: should we check x-coord here or later?
-  if ppu.windowEnable && ppu.fetcherX*8 >= (max(ppu.WX.read(),7) - 7) && ppu.LY.read() >= ppu.WY.read() {
+  if ppu.windowEnable && uint8(ppu.renderX) >= (max(ppu.WX.read(),7) - 7) && ppu.LY.read() >= ppu.WY.read() {
     return true
   } else {
     return false
@@ -183,14 +183,15 @@ func (ppu *Ppu) GetTile() bool {
     return true
   } else {
     var bgTileMapAddress uint16 = 0x9800
-    if (ppu.bgTileMap && !ppu.UsingWindow()) || (ppu.UsingWindow() && ppu.windowTileMap) {
+    if (ppu.bgTileMap && !ppu.renderingWindow) || (ppu.renderingWindow && ppu.windowTileMap) {
       bgTileMapAddress = 0x9C00
     }
 
     var tileMapAddressOffset uint16
 
-    if ppu.UsingWindow() {
-      tileMapAddressOffset = uint16(ppu.fetcherX - ppu.WX.read()/8)
+    if ppu.renderingWindow {
+      // offset is based on "window X", which is diff. between fetcherX and WX
+      tileMapAddressOffset = uint16(ppu.fetcherX - (ppu.WX.read()-7)/8)
       tileMapAddressOffset += 32 * (uint16(ppu.windowLineCounter) / 8)
     } else {
       // tile map is 32 x 32, so one X is 8 pixels or 1 fetcherX and
@@ -233,7 +234,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
   } else if ppu.bgWinDataAddress {
     baseAddress = 0x8000
     yOffset := uint16(ppu.LY.read() + ppu.SCY.read())
-    if ppu.UsingWindow() {
+    if ppu.renderingWindow {
       yOffset = uint16(ppu.windowLineCounter)
     }
     tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (yOffset % 8)
@@ -241,7 +242,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
   } else {
     baseAddress = 0x9000
     yOffset := uint16(ppu.LY.read() + ppu.SCY.read())
-    if ppu.UsingWindow() {
+    if ppu.renderingWindow {
       yOffset = uint16(ppu.windowLineCounter)
     }
     if ppu.CurrentTileIndex > 0x7F {
@@ -352,18 +353,22 @@ func (ppu *Ppu) renderPixelToScreen() {
     ppu.scrollDiscardedX += 1
     return
   }
-  // window penalty: when first start rendering window, restart Fifo + fetch
-  if ppu.UsingWindow() && !ppu.renderingWindow {
-    //fmt.Printf("initiate window fetch\n")
+
+  // when first start rendering window, restart Fifo + fetch
+  if ppu.InsideWindow() && !ppu.renderingWindow {
     ppu.clearFifo()
+    // reset fetcherX: since fetcher compares fetcherX to WX to decide
+    // whether to us window or not, we reset fetcherX to start of window
+    ppu.fetcherX = (ppu.WX.read() - 7)/8
     ppu.currentFetcherState = GetTile
     ppu.renderingWindow = true
     ppu.renderedWindowThisLY = true
     return
   }
-  if !ppu.UsingWindow() && ppu.renderingWindow {
+  if !ppu.InsideWindow() && ppu.renderingWindow {
     ppu.renderingWindow = false
   }
+
   // initiate sprite fetch
   if isTime, spriteIdx := ppu.isTimeToRenderSprite(); isTime {
     ppu.fetchingSprite = true
