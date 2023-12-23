@@ -327,9 +327,15 @@ func (ppu *Ppu) Push() bool {
   return true
 }
 
-func (ppu *Ppu) clearFifo() {
+func (ppu *Ppu) clearFifo(sprite bool) {
   for ppu.bgFifo.Length() > 0 {
     ppu.bgFifo.Pop()
+  }
+
+  if sprite {
+    for ppu.spriteFifo.Length() > 0 {
+      ppu.spriteFifo.Pop()
+    }
   }
 }
 
@@ -356,7 +362,7 @@ func (ppu *Ppu) renderPixelToScreen() {
 
   // when first start rendering window, restart Fifo + fetch
   if ppu.InsideWindow() && !ppu.renderingWindow {
-    ppu.clearFifo()
+    ppu.clearFifo(false)
     // reset fetcherX: since fetcher compares fetcherX to WX to decide
     // whether to us window or not, we reset fetcherX to start of window
     ppu.fetcherX = (ppu.WX.read() - 7)/8
@@ -533,7 +539,7 @@ func (ppu *Ppu) doCycle() {
       }
       ppu.renderedWindowThisLY = false
       ppu.renderingWindow = false
-      ppu.clearFifo()
+      ppu.clearFifo(true)
       // don't reset nDots here, keep counting to end of line
     }
   } else if ppu.currentMode == M0 {
@@ -585,7 +591,7 @@ func (ppu *Ppu) clearState() {
     ppu.scrollDiscardedX = 0
     ppu.renderingWindow = false
     ppu.fetchingSprite = false
-    ppu.clearFifo()
+    ppu.clearFifo(true)
     ppu.SpriteBuffer = make([]Sprite, 0)
 }
 
