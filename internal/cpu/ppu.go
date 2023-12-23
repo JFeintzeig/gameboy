@@ -109,12 +109,14 @@ type Ppu struct {
   renderX uint16
   scrollDiscardedX uint8
   renderingWindow bool
+  renderedWindowThisLY bool
 
   nDots uint16
 
   // fetcher state
   currentFetcherState FetcherState
   fetcherX uint8
+  windowLineCounter uint8
   CurrentTileIndex uint8
   CurrentTileDataLow uint8
   CurrentTileDataHigh uint8
@@ -189,7 +191,7 @@ func (ppu *Ppu) GetTile() bool {
 
     if ppu.UsingWindow() {
       tileMapAddressOffset = uint16(ppu.fetcherX - ppu.WX.read()/8)
-      tileMapAddressOffset += 32 * (uint16(ppu.LY.read() - ppu.WY.read()) / 8)
+      tileMapAddressOffset += 32 * (uint16(ppu.windowLineCounter) / 8)
     } else {
       // tile map is 32 x 32, so one X is 8 pixels or 1 fetcherX and
       // one Y is 32 LY's divided by 8 pixels
@@ -232,7 +234,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
     baseAddress = 0x8000
     yOffset := uint16(ppu.LY.read() + ppu.SCY.read())
     if ppu.UsingWindow() {
-      yOffset = uint16(ppu.LY.read() - ppu.WY.read())
+      yOffset = uint16(ppu.windowLineCounter)
     }
     tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (yOffset % 8)
     finalAddress = baseAddress + tileIndexOffset + offset
@@ -240,7 +242,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
     baseAddress = 0x9000
     yOffset := uint16(ppu.LY.read() + ppu.SCY.read())
     if ppu.UsingWindow() {
-      yOffset = uint16(ppu.LY.read() - ppu.WY.read())
+      yOffset = uint16(ppu.windowLineCounter)
     }
     if ppu.CurrentTileIndex > 0x7F {
       tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) + 2 * (yOffset % 8)
@@ -350,13 +352,17 @@ func (ppu *Ppu) renderPixelToScreen() {
     ppu.scrollDiscardedX += 1
     return
   }
-  // window penalty
+  // window penalty: when first start rendering window, restart Fifo + fetch
   if ppu.UsingWindow() && !ppu.renderingWindow {
     //fmt.Printf("initiate window fetch\n")
     ppu.clearFifo()
     ppu.currentFetcherState = GetTile
     ppu.renderingWindow = true
+    ppu.renderedWindowThisLY = true
     return
+  }
+  if !ppu.UsingWindow() && ppu.renderingWindow {
+    ppu.renderingWindow = false
   }
   // initiate sprite fetch
   if isTime, spriteIdx := ppu.isTimeToRenderSprite(); isTime {
@@ -517,6 +523,10 @@ func (ppu *Ppu) doCycle() {
       ppu.fetcherX = 0
       ppu.renderX = 0
       ppu.scrollDiscardedX = 0
+      if ppu.renderedWindowThisLY {
+        ppu.windowLineCounter += 1
+      }
+      ppu.renderedWindowThisLY = false
       ppu.renderingWindow = false
       ppu.clearFifo()
       // don't reset nDots here, keep counting to end of line
@@ -532,6 +542,7 @@ func (ppu *Ppu) doCycle() {
 
       if ppu.LY.read() == 144 {
         ppu.currentMode = M1
+        ppu.windowLineCounter = 0
 
         // VBlank interrupt
         IF := ppu.bus.ReadFromBus(0xFF0F)
