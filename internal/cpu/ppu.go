@@ -246,7 +246,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
       yOffset = uint16(ppu.windowLineCounter)
     }
     if ppu.CurrentTileIndex > 0x7F {
-      tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) + 2 * (yOffset % 8)
+      tileIndexOffset = 16 * (256-uint16(ppu.CurrentTileIndex)) - 2 * (yOffset % 8)
       finalAddress = baseAddress - tileIndexOffset + offset
     } else {
       tileIndexOffset = 16 * uint16(ppu.CurrentTileIndex) + 2 * (yOffset % 8)
