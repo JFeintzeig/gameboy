@@ -1,9 +1,5 @@
 package cpu
 
-import (
-//  "fmt"
-)
-
 // Opcode is the parsed octal representation of a byte
 // https://gb-archive.github.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
 type Opcode struct {
@@ -235,20 +231,9 @@ func MakeInstructionMap() map[string]Instruction {
 
   x3y7z3 := func (cpu *Cpu) {
     // EI: set IME flag _after_ the following instruction
-    // we write current PC to this variable
-    // when PC is greater than this variable, we will set
-    // the flag and reset this value to 0xFFFF (the max possible PC)
-    // execution logic:
-    // - we set the pcToSet variable, but PC is not yet incremented
-    // - the next Execute() loop first tests pcToSet, current PC is
-    //   not greater, so it fetches+decodes the next instruction
-    //   and increments PC
-    // - next N loops through Execute() execute that instruction,
-    //   based on functions in the queue
-    // - when queue is empty, we first call SetIME(), which now
-    //   sets the flag because PC has been incremented. we then
-    //   further increment PC +decode + execute another opcode after.
-    cpu.pcToSetIMEAfter = cpu.PC.read()
+    // - we set IMECountdown to 1
+    // - IMECountdown is decremented each time an instruction is fetched until it reaches 0
+    cpu.IMECountdown = 1
   }
 
   instructionMap["X3Y7Z3"] = Instruction{
@@ -624,7 +609,7 @@ func MakeInstructionMap() map[string]Instruction {
 
   x3z1q1p1_1 := func(cpu *Cpu) {
     // Set IME immediately after this instruction
-    cpu.pcToSetIMEAfter = cpu.PC.read() - 1
+    cpu.IMECountdown = 0
     ret(cpu)
   }
 

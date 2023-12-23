@@ -440,7 +440,7 @@ type Cpu struct {
   IncrementPC bool
 
   // Interrupts, maybe encapsulate this in a handler
-  pcToSetIMEAfter uint16
+  IMECountdown int8
   IME bool
   isHalted bool
 }
@@ -514,9 +514,12 @@ func (cpu *Cpu) ReadD() int8 {
 }
 
 func (cpu *Cpu) SetIME() {
-  if cpu.PC.read() > cpu.pcToSetIMEAfter {
+  if cpu.IMECountdown == 0 {
     cpu.IME = true
-    cpu.pcToSetIMEAfter = 0xFFFF
+  }
+  // gte so it goes to -1 and then stays there until reset
+  if cpu.IMECountdown >= 0 {
+    cpu.IMECountdown -= 1
   }
 }
 
