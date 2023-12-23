@@ -175,6 +175,9 @@ func (ppu *Ppu) UsingWindow() bool {
 func (ppu *Ppu) GetTile() bool {
   if ppu.fetchingSprite {
     ppu.CurrentTileIndex = ppu.SpriteToRender.tileIndex
+    if ppu.objSize {
+      ppu.CurrentTileIndex = SetBit(ppu.CurrentTileIndex, 0, 0)
+    }
     return true
   } else {
     var bgTileMapAddress uint16 = 0x9800
@@ -193,7 +196,7 @@ func (ppu *Ppu) GetTile() bool {
       tileMapAddressOffset = uint16((ppu.SCX.read() / 8 + ppu.fetcherX) & 0x1F)
       tileMapAddressOffset += 32 * (uint16((ppu.LY.read() + ppu.SCY.read()) & 0xFF) / 8)
     }
-    fmt.Printf("LY %d fetcherX %d tileMapAddr %04X ", ppu.LY.read(), ppu.fetcherX, bgTileMapAddress + tileMapAddressOffset)
+    //fmt.Printf("LY %d fetcherX %d tileMapAddr %04X ", ppu.LY.read(), ppu.fetcherX, bgTileMapAddress + tileMapAddressOffset)
 
     tileMapAddressOffset &= 0x3FF
 
@@ -217,7 +220,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
     } else {
       SpriteHeight = 8
     }
-    yOffset := uint16(ppu.LY.read()) % SpriteHeight
+    yOffset := uint16(ppu.LY.read() - ppu.SpriteToRender.yPos - 16) % SpriteHeight
     // Y flip
     if GetBitBool(ppu.SpriteToRender.flags, 6) {
       yOffset = SpriteHeight - yOffset - 1
@@ -250,7 +253,7 @@ func (ppu *Ppu) GetTileData(offset uint16) uint8 {
   tileData = ppu.read(finalAddress)
 
   if !ppu.fetchingSprite {
-    fmt.Printf("tileIndex %d tileAddr %04X tileData %02X ", ppu.CurrentTileIndex, finalAddress, tileData)
+    //fmt.Printf("tileIndex %d tileAddr %04X tileData %02X ", ppu.CurrentTileIndex, finalAddress, tileData)
   }
 
   return tileData
@@ -306,16 +309,16 @@ func (ppu *Ppu) Push() bool {
     return false
   }
 
-  fmt.Printf("pixels: ")
+  ///fmt.Printf("pixels: ")
   for i := 0; i < 8; i ++ {
     low := (ppu.CurrentTileDataLow >> (7-i)) & 0x01
     high := (ppu.CurrentTileDataHigh >> (7-i)) & 0x01
 
     ppu.bgFifo.Push(&Pixel{color: high << 1 | low})
-    fmt.Printf("%d ", high << 1 | low)
+    //fmt.Printf("%d ", high << 1 | low)
   }
 
-  fmt.Printf("\n")
+  //fmt.Printf("\n")
   ppu.fetcherX += 1
 
   return true
@@ -342,12 +345,14 @@ func (ppu *Ppu) renderPixelToScreen() {
   }
   // SCX scrolling penalty: discard first pixels in given tile
   if ppu.scrollDiscardedX < (ppu.SCX.read() % 8) {
+    //fmt.Printf("discard scroll pixel\n")
     ppu.bgFifo.Pop()
     ppu.scrollDiscardedX += 1
     return
   }
   // window penalty
   if ppu.UsingWindow() && !ppu.renderingWindow {
+    //fmt.Printf("initiate window fetch\n")
     ppu.clearFifo()
     ppu.currentFetcherState = GetTile
     ppu.renderingWindow = true
@@ -364,10 +369,12 @@ func (ppu *Ppu) renderPixelToScreen() {
   }
   // rendering paused until done fetching sprite
   if ppu.fetchingSprite {
+    //fmt.Printf("fetching sprite\n")
     return
   }
 
   if ppu.renderX > 159 {
+    //fmt.Printf("renderX too big\n")
     return
   }
 
@@ -375,6 +382,8 @@ func (ppu *Ppu) renderPixelToScreen() {
   var color uint8 = 0x00
   if ppu.bgWinDisplay {
     color = ppu.bgp[bgPixel.color]
+  } else {
+    //fmt.Printf("bg not enabled\n")
   }
   if ppu.spriteFifo.Length() > 0  && ppu.spriteEnable {
     sPixel := ppu.spriteFifo.Pop()
@@ -417,9 +426,12 @@ func (ppu *Ppu) maybeRequestInterrupt() {
   }
 
   if newStatInterruptLine && !ppu.statInterruptLine {
-    ppu.statInterruptLine = true
     IF := ppu.bus.ReadFromBus(0xFF0F)
     ppu.bus.WriteToBus(0xFF0F, SetBitBool(IF, 1, true))
+    //if ppu.lycInt && ppu.LYCeqLY {
+    //  fmt.Printf("LYC %d LY %d int ", ppu.LYC.read(), ppu.LY.read())
+    //}
+    //fmt.Printf("written to IF: IE %08b IF %08b\n", ppu.bus.ReadFromBus(0xFFFF), ppu.bus.ReadFromBus(0xFF0F))
   }
 
   ppu.statInterruptLine = newStatInterruptLine
@@ -447,7 +459,7 @@ func (ppu *Ppu) scanOAM() {
     SpriteHeight = 8
   }
 
-  if xCoord >= 0 && LYP16 >= yCoord && LYP16 <= yCoord + SpriteHeight {
+  if xCoord >= 0 && LYP16 >= yCoord && LYP16 < yCoord + SpriteHeight {
     sprite := Sprite{yCoord, xCoord, tileIndex, flags}
     ppu.SpriteBuffer = append(ppu.SpriteBuffer, sprite)
   }
@@ -634,7 +646,6 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.mode2Int = GetBitBool(value,5)
     ppu.mode1Int = GetBitBool(value,4)
     ppu.mode0Int = GetBitBool(value,3)
-  fmt.Printf("writing STAT %08b\n", value)
     // Bits 2, 1, 0 are read-only
   case address == LY:
     // LY is read-only

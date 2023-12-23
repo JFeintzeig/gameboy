@@ -1,7 +1,11 @@
 package cpu
 
 func SetBit(value uint8, bitNum uint8, bitVal uint8) uint8 {
-  return value | (bitVal << bitNum)
+  if bitVal == 1 {
+    return value | (bitVal << bitNum)
+  } else {
+    return value & ^(1 << bitNum)
+  }
 }
 
 func GetBit(value uint8, bitNum uint8) uint8 {

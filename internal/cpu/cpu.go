@@ -403,6 +403,7 @@ func (cpu *Cpu) Execute() {
     microop(cpu)
     counter++
 
+    // TODO: validate this sleeps how long i want
     time.Sleep(time.Duration(1000/cpu.ClockSpeed) * time.Millisecond)
   }
 }
