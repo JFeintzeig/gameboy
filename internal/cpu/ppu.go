@@ -375,6 +375,11 @@ func (ppu *Ppu) renderPixelToScreen() {
     ppu.renderingWindow = false
   }
 
+  // rendering paused until done fetching sprite
+  if ppu.fetchingSprite {
+    //fmt.Printf("fetching sprite\n")
+    return
+  }
   // initiate sprite fetch
   if isTime, spriteIdx := ppu.isTimeToRenderSprite(); isTime {
     ppu.fetchingSprite = true
@@ -382,11 +387,6 @@ func (ppu *Ppu) renderPixelToScreen() {
     ppu.currentFetcherState = GetTile
     // remove `sprite` from `SpriteBuffer`
     ppu.SpriteBuffer = append(ppu.SpriteBuffer[:spriteIdx], ppu.SpriteBuffer[spriteIdx+1:]...)
-    return
-  }
-  // rendering paused until done fetching sprite
-  if ppu.fetchingSprite {
-    //fmt.Printf("fetching sprite\n")
     return
   }
 
