@@ -3,6 +3,7 @@ package cpu
 import (
   "image/color"
   "github.com/hajimehoshi/ebiten/v2"
+  "github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 var (
@@ -22,9 +23,17 @@ func init() {
 
 type Game struct {
   cpu *Cpu
+  keyboard map[string]ebiten.Key
 }
 
 func (g *Game) Update() error {
+  for keyName, key := range g.keyboard {
+    if keypress, ok := g.cpu.Bus.joypad.keyboard[keyName]; ok {
+      keypress.isPressed = ebiten.IsKeyPressed(key)
+      keypress.isJustPressed = inpututil.IsKeyJustPressed(key)
+      g.cpu.Bus.joypad.keyboard[keyName] = keypress
+    }
+  }
   return nil
 }
 
@@ -53,8 +62,19 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func NewEbitenGame(cpu *Cpu) (*Game, error) {
+  keyboard := make(map[string]ebiten.Key)
+  keyboard["up"] = ebiten.KeyW
+  keyboard["down"] = ebiten.KeyS
+  keyboard["left"] = ebiten.KeyA
+  keyboard["right"] = ebiten.KeyD
+  keyboard["a"] = ebiten.KeyK
+  keyboard["b"] = ebiten.KeyJ
+  keyboard["start"] = ebiten.KeyI
+  keyboard["select"] = ebiten.KeyU
+
   g := &Game{
     cpu,
+    keyboard,
   }
   return g, nil
 }

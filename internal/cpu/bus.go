@@ -23,6 +23,9 @@ const (
   OBP0 = 0xFF48
   OBP1 = 0xFF49
   BANK = 0xFF50
+  P1 = 0xFF00
+  IE = 0xFFFF
+  IF = 0xFF0F
 )
 
 type Mediator interface {
@@ -34,6 +37,7 @@ type Bus struct {
   memory [64*1024]Register8
   ppu *Ppu
   timers *Timers
+  joypad *Joypad
   romFilePath string
 }
 
@@ -55,6 +59,8 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       return bus.timers.read(address)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       return bus.ppu.read(address)
+    case address == P1:
+      return bus.joypad.read()
     default:
       return bus.memory[address].read()
   }
@@ -83,6 +89,8 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
         bus.LoadROM()
       }
       bus.memory[address].write(value)
+    case address == P1:
+      bus.joypad.write(value)
     default:
       bus.memory[address].write(value)
   }
@@ -128,6 +136,8 @@ func NewBus(romFilePath string) *Bus {
   timers := Timers{}
   timers.bus = &bus
   bus.timers = &timers
+  bus.joypad = NewJoypad()
+  bus.joypad.bus = &bus
 
   bus.romFilePath = romFilePath
 
