@@ -11,17 +11,19 @@ const display = true
 
 var (
   file *string
+  bootrom *bool
 //  debug *bool
 )
 
 func init() {
   file = flag.String("file","data/Tetris.gb","path to file to load")
+  bootrom = flag.Bool("bootrom",false,"set to true to use bootrom")
 }
 
 func main() {
   flag.Parse()
 
-  gb := cpu.NewGameBoy(file, true)
+  gb := cpu.NewGameBoy(file, *bootrom)
 
   if !display {
     gb.Execute()
