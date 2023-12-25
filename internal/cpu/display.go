@@ -31,7 +31,9 @@ func (g *Game) Update() error {
     if keypress, ok := g.cpu.Bus.joypad.keyboard[keyName]; ok {
       keypress.isPressed = ebiten.IsKeyPressed(key)
       keypress.isJustPressed = inpututil.IsKeyJustPressed(key)
+      g.cpu.Bus.joypad.mu.Lock()
       g.cpu.Bus.joypad.keyboard[keyName] = keypress
+      g.cpu.Bus.joypad.mu.Unlock()
     }
   }
   return nil

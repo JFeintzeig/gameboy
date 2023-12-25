@@ -2,6 +2,7 @@ package cpu
 
 import (
   "fmt"
+  "sync"
 )
 
 type KeyPress struct {
@@ -13,10 +14,12 @@ type Joypad struct {
   bus Mediator
 
   value uint8
+  mu sync.RWMutex
   keyboard map[string]KeyPress
 }
 
 func (j *Joypad) read() uint8 {
+  j.mu.RLock()
   var keypress uint8
   // select
   if GetBitBool(j.value, 5) {
@@ -49,6 +52,7 @@ func (j *Joypad) read() uint8 {
     }
   }
   fmt.Printf("joypad read: %08b\n", (j.value & 0xF0) | (keypress & 0x0F))
+  j.mu.RUnlock()
   return (j.value & 0xF0) | (keypress & 0x0F)
 }
 
@@ -59,11 +63,13 @@ func (j *Joypad) write(val uint8) {
 
 func (j *Joypad) doCycle() {
   requestInterrupt := false
+  j.mu.RLock()
   for _, v := range j.keyboard {
     if v.isJustPressed {
       requestInterrupt = true
     }
   }
+  j.mu.RUnlock()
 
   if requestInterrupt {
     rIF := j.bus.ReadFromBus(IF)
@@ -83,5 +89,5 @@ func NewJoypad() *Joypad {
   keyboard["start"] = KeyPress{false, false}
   keyboard["select"] = KeyPress{false, false}
 
-  return &Joypad{value: 0xCF, keyboard: keyboard}
+  return &Joypad{value: 0xCF, keyboard: keyboard, mu: sync.RWMutex{}}
 }

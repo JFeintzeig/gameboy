@@ -1,5 +1,7 @@
 package cpu
 
+import "fmt"
+
 // Opcode is the parsed octal representation of a byte
 // https://gb-archive.github.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
 type Opcode struct {
@@ -1138,13 +1140,16 @@ func MakeInstructionMap() map[string]Instruction {
   halt := func(cpu *Cpu){
     // make it halt
     cpu.isHalted = true
+    fmt.Printf("halted\n")
 
     pendingInt := (cpu.Bus.ReadFromBus(0xFFFF) & cpu.Bus.ReadFromBus(0xFF0F)) != 0
+    pendingInt = pendingInt || cpu.justDidInterrupt
 
     // unhalt if pending interrupt, regardless of IME
     // DoInterrupts() will check IME to decide whether to service interrupt
     if pendingInt {
       cpu.isHalted = false
+      fmt.Printf("unhalted\n")
       return
     }
 

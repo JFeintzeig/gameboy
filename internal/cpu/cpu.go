@@ -333,6 +333,7 @@ func (cpu *Cpu) LogSerial() {
 
 // https://gbdev.io/pandocs/Interrupts.html#interrupts
 func (cpu *Cpu) DoInterrupts() {
+  cpu.justDidInterrupt = false
   if !cpu.IME {
     return
   }
@@ -355,6 +356,7 @@ func (cpu *Cpu) DoInterrupts() {
   for _, index := range []uint8{0,1,2,3} {
     isRequested := (interruptsToService >> index) & 0x01
     if isRequested == 0x01 {
+      cpu.justDidInterrupt = true
       // reset flag bit
       mask := uint8(1 << index)
       mask = ^mask
@@ -445,6 +447,7 @@ type Cpu struct {
   IMECountdown int8
   IME bool
   isHalted bool
+  justDidInterrupt bool
 }
 
 func (cpu *Cpu) getFlagZ() uint8 {
