@@ -72,6 +72,7 @@ func (j *Joypad) doCycle() {
   j.mu.RUnlock()
 
   if requestInterrupt {
+    fmt.Printf("sending joypad interrupt...\n")
     rIF := j.bus.ReadFromBus(IF)
     rIF = SetBitBool(rIF, 4, true)
     j.bus.WriteToBus(IF, rIF)

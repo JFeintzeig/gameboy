@@ -1139,8 +1139,10 @@ func MakeInstructionMap() map[string]Instruction {
   // TODO: implement HALT bug
   halt := func(cpu *Cpu){
     // make it halt
+    if !cpu.isHalted {
+      fmt.Printf("starting halt...\n")
+    }
     cpu.isHalted = true
-    fmt.Printf("halted\n")
 
     pendingInt := (cpu.Bus.ReadFromBus(0xFFFF) & cpu.Bus.ReadFromBus(0xFF0F)) != 0
     pendingInt = pendingInt || cpu.justDidInterrupt

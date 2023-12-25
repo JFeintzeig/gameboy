@@ -44,13 +44,15 @@ type Bus struct {
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
   switch {
     case address >= 0x8000 && address <= 0x9FFF:
-      if bus.ppu.currentMode == M3 {
+      mode := Mode(bus.ReadFromBus(STAT) & 0x03)
+      if mode == M3 {
         return 0xFF
       } else {
         return bus.ppu.read(address)
       }
     case address >= 0xFE00 && address <= 0xFE9F:
-      if bus.ppu.currentMode == M2 || bus.ppu.currentMode == M3 {
+      mode := Mode(bus.ReadFromBus(STAT) & 0x03)
+      if mode == M2 || mode == M3 {
         return 0xFF
       } else {
         return bus.ppu.read(address)
@@ -69,13 +71,15 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
 func (bus *Bus) WriteToBus(address uint16, value uint8) {
   switch {
     case address >= 0x8000 && address <= 0x9FFF:
-      if bus.ppu.currentMode == M3 {
+      mode := Mode(bus.ReadFromBus(STAT) & 0x03)
+      if mode == M3 {
         return
       } else {
         bus.ppu.write(address, value)
       }
     case address >= 0xFE00 && address <= 0xFE9F:
-      if bus.ppu.currentMode == M2 || bus.ppu.currentMode == M3 {
+      mode := Mode(bus.ReadFromBus(STAT) & 0x03)
+      if mode == M2 || mode == M3 {
         return
       } else {
         bus.ppu.write(address, value)

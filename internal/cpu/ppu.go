@@ -613,13 +613,15 @@ func (ppu *Ppu) read(address uint16) uint8 {
     result = SetBitBool(result, 0, ppu.bgWinDisplay)
     return result
   case address == STAT:
-    var result uint8
+    var result uint8 = 0
     result = SetBitBool(result, 6, ppu.lycInt)
     result = SetBitBool(result, 5, ppu.mode2Int)
     result = SetBitBool(result, 4, ppu.mode1Int)
     result = SetBitBool(result, 3, ppu.mode0Int)
     result = SetBitBool(result, 2, ppu.LYCeqLY)
-    result |= uint8(ppu.currentMode)
+    if ppu.lcdEnable {
+      result |= uint8(ppu.currentMode)
+    }
     return result
   case address == 0xFF44:
     return ppu.LY.read()
@@ -653,6 +655,17 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.oam[address - 0xFE00].write(value)
   case address == LCDC:
     ppu.lcdEnable = GetBitBool(value, 7)
+    if !ppu.lcdEnable {
+      ppu.clearState()
+      ppu.windowTileMap = false
+      ppu.windowEnable = false
+      ppu.bgWinDataAddress = false
+      ppu.bgTileMap = false
+      ppu.objSize = false
+      ppu.spriteEnable = false
+      ppu.bgWinDisplay = false
+      return
+    }
     ppu.windowTileMap = GetBitBool(value, 6)
     ppu.windowEnable = GetBitBool(value, 5)
     ppu.bgWinDataAddress = GetBitBool(value, 4)
@@ -660,9 +673,6 @@ func (ppu *Ppu) write(address uint16, value uint8) {
     ppu.objSize = GetBitBool(value, 2)
     ppu.spriteEnable = GetBitBool(value, 1)
     ppu.bgWinDisplay = GetBitBool(value, 0)
-    if !ppu.lcdEnable {
-      ppu.clearState()
-    }
   case address == STAT:
     ppu.lycInt = GetBitBool(value,6)
     ppu.mode2Int = GetBitBool(value,5)
