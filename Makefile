@@ -12,3 +12,9 @@ test_ppu: app
 
 test_instr_timing: app
 	./scripts/run_test_roms.sh ~/projects/2023/gameboy_resources/gb-test-roms/instr_timing/
+
+test_mem_timing: app
+	./scripts/run_test_roms.sh ~/projects/2023/gameboy_resources/gb-test-roms/mem_timing/individual/
+
+test_other: app
+	./scripts/run_other_tests.sh
