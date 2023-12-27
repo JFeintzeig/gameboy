@@ -1,8 +1,7 @@
 package cpu
 
 import (
-	"fmt"
-	//"runtime"
+	//"fmt"
 )
 
 type Mode int

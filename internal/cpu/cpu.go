@@ -356,6 +356,7 @@ func (cpu *Cpu) DoInterrupts() {
   for _, index := range []uint8{0,1,2,3} {
     isRequested := (interruptsToService >> index) & 0x01
     if isRequested == 0x01 {
+      fmt.Printf("serving interrupt IME:%t IE:%08b IF:%08b\n", cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
       cpu.justDidInterrupt = true
       // reset flag bit
       mask := uint8(1 << index)
@@ -407,6 +408,7 @@ func (cpu *Cpu) Execute() {
     microop := cpu.ExecutionQueue.Pop()
     microop(cpu)
     counter++
+    //cpu.DoInterrupts()
 
     // TODO: validate this sleeps how long i want
     time.Sleep(time.Duration(1000/cpu.ClockSpeed) * time.Millisecond)

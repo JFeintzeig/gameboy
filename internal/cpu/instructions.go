@@ -1136,7 +1136,7 @@ func MakeInstructionMap() map[string]Instruction {
   halt := func(cpu *Cpu){
     // make it halt
     if !cpu.isHalted {
-      fmt.Printf("starting halt...\n")
+      fmt.Printf("starting halt PC:%04X IME:%t IE:%08b IF:%08b\n", cpu.PC.read(), cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
     }
     cpu.isHalted = true
 

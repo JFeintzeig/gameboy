@@ -1,8 +1,8 @@
 package cpu
 
 import (
-  "io/ioutil"
-  "log"
+	"io/ioutil"
+	"log"
 )
 
 const (
