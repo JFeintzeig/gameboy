@@ -29,7 +29,7 @@ type Game struct {
 func (g *Game) Update() error {
   for keyName, key := range g.keyboard {
     if keypress, ok := g.cpu.Bus.joypad.keyboard[keyName]; ok {
-      keypress.isPressed = ebiten.IsKeyPressed(key)
+      keypress.isJustReleased = inpututil.IsKeyJustReleased(key)
       keypress.isJustPressed = inpututil.IsKeyJustPressed(key)
       g.cpu.Bus.joypad.mu.Lock()
       g.cpu.Bus.joypad.keyboard[keyName] = keypress
