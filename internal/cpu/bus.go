@@ -36,6 +36,7 @@ type Mediator interface {
 }
 
 type Bus struct {
+  cartridge [32*1024]Register8
   memory [64*1024]Register8
   ppu *Ppu
   timers *Timers
@@ -50,6 +51,8 @@ type Bus struct {
 
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
   switch {
+    case address < 0x8000:
+      return bus.cartridge[address].read()
     case address >= 0x8000 && address <= 0x9FFF:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M3 {
@@ -79,6 +82,9 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
 
 func (bus *Bus) WriteToBus(address uint16, value uint8) {
   switch {
+    case address < 0x8000:
+      // ROM is ready-only
+      return
     case address >= 0x8000 && address <= 0x9FFF:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M3 {
@@ -124,7 +130,7 @@ func (bus *Bus) LoadROM() {
   for address, element := range data {
     // starts at 0x0, first 256 bytes
     // will be overwitten by boot rom
-    bus.WriteToBus(uint16(address), element)
+    bus.cartridge[uint16(address)].write(element)
   }
 }
 
@@ -137,7 +143,7 @@ func (bus *Bus) LoadBootROM() {
     log.Fatal("can't find boot rom")
   }
   for address, element := range data {
-    bus.WriteToBus(uint16(address), element)
+    bus.cartridge[uint16(address)].write(element)
   }
 }
 
@@ -165,8 +171,6 @@ func (bus *Bus) doCycle() {
 }
 
 func NewBus(romFilePath string) *Bus {
-  // need to initialize memory
-
   bus := Bus{}
 
   // returns a *Ppu

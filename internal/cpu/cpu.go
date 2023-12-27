@@ -266,7 +266,7 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           inst = cpu.InstructionMap["X3Y6Z3"]
         case (op.X == 3) && (op.Y == 7) && (op.Z == 3):
           inst = cpu.InstructionMap["X3Y7Z3"]
-        case (op.X == 3) && (op.Z == 4) && (op.P <= 3):
+        case (op.X == 3) && (op.Z == 4) && (op.Y <= 3):
           inst = cpu.InstructionMap["X3Z4Ylte3"]
         case (op.X == 3) && (op.Z == 5) && (op.Q == 0):
           inst = cpu.InstructionMap["X3Z5Q0"]
@@ -277,9 +277,9 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         case (op.X == 3) && (op.Z == 7):
           inst = cpu.InstructionMap["X3Z7"]
         default:
+          fmt.Printf("PC:%04X OC:%xv\n", cpu.PC.read(), cpu.CurrentOpcode)
           err := fmt.Sprintf("not implemented, instr: %xv", op)
           panic(err)
-          inst = Instruction{}
         }
         return &inst
       }
@@ -379,7 +379,7 @@ func (cpu *Cpu) DoInterrupts() {
 func (cpu *Cpu) Execute() {
   counter := 0
   for {
-    cpu.LogSerial()
+    //cpu.LogSerial()
     // TODO: refactor all this into Bus.doCycle()
     cpu.Bus.timers.doCycle()
     cpu.Bus.joypad.doCycle()
