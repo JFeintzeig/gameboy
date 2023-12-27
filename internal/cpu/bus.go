@@ -152,7 +152,7 @@ func (bus *Bus) doCycle() {
     bus.dmaCounter += 1
     // do nothing for one cycle
     return
-  } else if bus.dmaCounter > 161 {
+  } else if bus.dmaCounter > 160 {
     fmt.Printf("last DMA cycle\n")
     bus.dmaInProgress = false
     bus.dmaCounter = 0
