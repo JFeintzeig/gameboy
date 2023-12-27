@@ -1,7 +1,6 @@
 package cpu
 
 import (
-  "fmt"
   "sync"
 )
 
@@ -81,7 +80,6 @@ func (j *Joypad) doCycle() {
   if requestInterrupt {
     rIF := j.bus.ReadFromBus(IF)
     rIF = SetBitBool(rIF, 4, true)
-    fmt.Printf("req interupt IE:%08b IF:%08b\n", j.bus.ReadFromBus(IE), rIF)
     j.bus.WriteToBus(IF, rIF)
   }
 }

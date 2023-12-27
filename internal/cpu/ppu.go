@@ -402,7 +402,7 @@ func (ppu *Ppu) renderPixelToScreen() {
   } else {
     //fmt.Printf("bg not enabled\n")
   }
-  if ppu.spriteFifo.Length() > 0  && ppu.spriteEnable {
+  if ppu.spriteFifo.Length() > 0 && ppu.spriteEnable {
     sPixel := ppu.spriteFifo.Pop()
     if sPixel.color != 0x00 && !(sPixel.priority == 0x01 && bgPixel.color != 0x00) {
       if sPixel.palette == 0 {
@@ -699,69 +699,5 @@ func (ppu *Ppu) write(address uint16, value uint8) {
   case address == OBP1:
     ppu.obp1.write(value)
   // TODO
-  }
-}
-
-// TODO: so with this logging for
-// hello world, i know the true values of:
-// tileMap addr -> tileMap index -> tileData addr ->
-// (x,y) pos on screen -> index in screen slice.
-// i need to log the same info in this routine vs.
-// in PPU and compare for each tile
-// another debug idea: add filters so PPU renders
-// just one tile, see where it ends up and how it looks
-func (ppu *Ppu) RenderEasy() {
-  address := uint16(0x9800)
-  pos := 0
-  // its a 32 x 32 tilemap
-  // but we dont want to draw past edge of screen
-  // which is 20 tiles horizontal and 18 vertical
-  for pos < 32*18 {
-    tileIndex := ppu.read(address)
-    fmt.Printf("*********************************\n")
-    fmt.Printf("Tile in pos %d, index address 0x%04x\n", pos, address)
-    ppu.DrawTileData(uint16(tileIndex), pos)
-    address += 1
-    pos += 1
-  }
-}
-
-func (ppu *Ppu) DrawTileData(tileIndex uint16, pos int) {
-  // dont draw past 20 tiles horizontally
-  if pos % 32 > 19 {
-    return
-  }
-  address := uint16(0x9000) + tileIndex*16
-  stopAddress := address + 16
-  // coord is in address space, so 2 X # of pixels
-  coord := pos*16
-
-  fmt.Printf("index %d\n", tileIndex)
-
-  for address < stopAddress {
-    tileNum := coord / 16  // 16 bytes per tile
-    xBase := (tileNum%32) * 8 // 32 sprites per line in tileMap
-    yBase := (tileNum/32) * 160 * 8 // 160 pixels per line
-    // should be between 0 and 1280 always
-    // should be multiple of 160 b/c its adding rows
-    offset := (160 * (coord - yBase%1280)/2) % 1280 // how many rows into sprite
-
-    low := ppu.read(address)
-    address += 1
-    high := ppu.read(address)
-    address += 1
-    fmt.Printf("Tiledata @0x%04X: %02X %02X ", address-2, low, high)
-
-    fmt.Printf("TileNum:%d xBase:%d yBase:%d offset:%d\n", tileNum, xBase, yBase, offset)
-
-    for i:= 0; i < 8; i++ {
-      lb := (low >> (7-i)) & 0x01
-      hb := (high >> (7-i)) & 0x01
-      pixel := (hb << 1 | lb)
-      index := yBase + xBase + offset + i
-      ppu.screen[index] = pixel
-    }
-
-    coord += 2
   }
 }
