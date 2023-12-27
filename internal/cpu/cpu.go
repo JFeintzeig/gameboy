@@ -360,7 +360,7 @@ func (cpu *Cpu) DoInterrupts() {
       // reset flag bit
       mask := uint8(1 << index)
       mask = ^mask
-      cpu.Bus.WriteToBus(0xFF0F, interruptFlags & mask)
+      cpu.Bus.WriteToBus(IF, interruptFlags & mask)
       // reset IME
       cpu.IME = false
       // push handling routine to queue
@@ -382,6 +382,7 @@ func (cpu *Cpu) Execute() {
     cpu.LogSerial()
     cpu.Bus.timers.doCycle()
     cpu.Bus.joypad.doCycle()
+    cpu.Bus.doCycle()
     // TODO: need to figure out _when_ to do interrupts!!!
     // Timers -> Int -> PPU -> CPU: acid2 has no background, appears to hit LC_08 but not LC_10
     //    why? looks like i never get LYC == LY int again, even though PPU appears to fire it by

@@ -1,6 +1,7 @@
 package cpu
 
 import (
+  "fmt"
   "io/ioutil"
   "log"
 )
@@ -18,7 +19,8 @@ const (
   SCX = 0xFF43
   WY = 0xFF4A
   WX = 0xFF4B
-  OAM = 0xFE00
+  OAM_START = 0xFE00
+  OAM_END = 0xFE9F
   BGP = 0xFF47
   OBP0 = 0xFF48
   OBP1 = 0xFF49
@@ -26,6 +28,7 @@ const (
   P1 = 0xFF00
   IE = 0xFFFF
   IF = 0xFF0F
+  DMA = 0xFF46
 )
 
 type Mediator interface {
@@ -39,6 +42,11 @@ type Bus struct {
   timers *Timers
   joypad *Joypad
   romFilePath string
+
+  // DMA
+  dmaInProgress bool
+  dmaStartAddress uint16
+  dmaCounter uint8
 }
 
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
@@ -50,7 +58,7 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       } else {
         return bus.ppu.read(address)
       }
-    case address >= 0xFE00 && address <= 0xFE9F:
+    case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
         return 0xFF
@@ -63,6 +71,8 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       return bus.ppu.read(address)
     case address == P1:
       return bus.joypad.read()
+    case address == DMA:
+      return uint8(bus.dmaStartAddress >> 2)
     default:
       return bus.memory[address].read()
   }
@@ -77,7 +87,7 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       } else {
         bus.ppu.write(address, value)
       }
-    case address >= 0xFE00 && address <= 0xFE9F:
+    case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
         return
@@ -95,6 +105,11 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.memory[address].write(value)
     case address == P1:
       bus.joypad.write(value)
+    case address == DMA:
+      fmt.Printf("DMA initiated\n")
+      bus.dmaCounter = 0
+      bus.dmaStartAddress = uint16(value) << 2
+      bus.dmaInProgress = true
     default:
       bus.memory[address].write(value)
   }
@@ -128,6 +143,31 @@ func (bus *Bus) LoadBootROM() {
   }
 }
 
+func (bus *Bus) doCycle() {
+  if !bus.dmaInProgress {
+    return
+  }
+  if bus.dmaCounter == 0 {
+    fmt.Printf("first DMA cycle\n")
+    bus.dmaCounter += 1
+    // do nothing for one cycle
+    return
+  } else if bus.dmaCounter > 161 {
+    fmt.Printf("last DMA cycle\n")
+    bus.dmaInProgress = false
+    bus.dmaCounter = 0
+    return
+  } else {
+    // directly access memory, don't go through WriteToBus // ReadFromBus because of blocking?
+    sourceAddress := bus.dmaStartAddress + uint16(bus.dmaCounter) - 1
+    destAddress := OAM_START + uint16(bus.dmaCounter) - 1
+    // TODO: need to read directly so i can block reads
+    value := bus.ReadFromBus(sourceAddress)
+    bus.ppu.write(destAddress, value)
+    bus.dmaCounter += 1
+  }
+}
+
 func NewBus(romFilePath string) *Bus {
   // need to initialize memory
 
@@ -144,6 +184,8 @@ func NewBus(romFilePath string) *Bus {
   bus.joypad.bus = &bus
 
   bus.romFilePath = romFilePath
+
+  bus.dmaInProgress = false
 
   return &bus
 }

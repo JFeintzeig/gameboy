@@ -459,13 +459,13 @@ func (ppu *Ppu) scanOAM() {
     return
   }
 
-  yCoord := ppu.read(OAM + uint16(ppu.OAMOffset))
+  yCoord := ppu.read(OAM_START + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
-  xCoord := ppu.read(OAM + uint16(ppu.OAMOffset))
+  xCoord := ppu.read(OAM_START + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
-  tileIndex := ppu.read(OAM + uint16(ppu.OAMOffset))
+  tileIndex := ppu.read(OAM_START + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
-  flags := ppu.read(OAM + uint16(ppu.OAMOffset))
+  flags := ppu.read(OAM_START + uint16(ppu.OAMOffset))
   ppu.OAMOffset += 1
 
   LYP16 := ppu.LY.read() + 16
