@@ -72,7 +72,7 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
     case address == P1:
       return bus.joypad.read()
     case address == DMA:
-      return uint8(bus.dmaStartAddress >> 2)
+      return uint8(bus.dmaStartAddress >> 8)
     default:
       return bus.memory[address].read()
   }
@@ -106,10 +106,10 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
     case address == P1:
       bus.joypad.write(value)
     case address == DMA:
-      fmt.Printf("DMA initiated\n")
       bus.dmaCounter = 0
-      bus.dmaStartAddress = uint16(value) << 2
+      bus.dmaStartAddress = uint16(value) << 8
       bus.dmaInProgress = true
+      fmt.Printf("DMA initiated %02x %04X\n", value, bus.dmaStartAddress)
     default:
       bus.memory[address].write(value)
   }
@@ -153,7 +153,7 @@ func (bus *Bus) doCycle() {
     // do nothing for one cycle
     return
   } else if bus.dmaCounter > 160 {
-    fmt.Printf("last DMA cycle\n")
+    fmt.Printf("last DMA cycle %d\n", bus.dmaCounter)
     bus.dmaInProgress = false
     bus.dmaCounter = 0
     return
@@ -163,6 +163,7 @@ func (bus *Bus) doCycle() {
     destAddress := OAM_START + uint16(bus.dmaCounter) - 1
     // TODO: need to read directly so i can block reads
     value := bus.ReadFromBus(sourceAddress)
+    fmt.Printf("start:%04X S:%04X D:%04X V:%02X\n", bus.dmaStartAddress, sourceAddress, destAddress, value)
     bus.ppu.write(destAddress, value)
     bus.dmaCounter += 1
   }
