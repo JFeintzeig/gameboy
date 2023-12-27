@@ -380,7 +380,7 @@ func (cpu *Cpu) DoInterrupts() {
 func (cpu *Cpu) Execute() {
   counter := 0
   for {
-    //cpu.LogSerial()
+    cpu.LogSerial()
     // TODO: refactor all this into Bus.doCycle()
     cpu.Bus.timers.doCycle()
     cpu.Bus.joypad.doCycle()
@@ -397,7 +397,7 @@ func (cpu *Cpu) Execute() {
     //    and RETI so it waits one instruction, not a specific PC
     //    
     // Timers -> PPU -> Int -> CPU: acid2 stuck in HALT after jumping to LC_08
-    cpu.DoInterrupts()
+    //cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 
     if cpu.ExecutionQueue.Length() < 1 {
@@ -408,7 +408,7 @@ func (cpu *Cpu) Execute() {
     microop := cpu.ExecutionQueue.Pop()
     microop(cpu)
     counter++
-    //cpu.DoInterrupts()
+    cpu.DoInterrupts()
 
     // TODO: validate this sleeps how long i want
     time.Sleep(time.Duration(1000/cpu.ClockSpeed) * time.Millisecond)
