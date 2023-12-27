@@ -164,7 +164,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P3Q0"] = Instruction {
    "LDD (HL) A",
    1,
-   []func(*Cpu){no_op, x0z2q0p3_1},
+   []func(*Cpu){x0z2q0p3_1, no_op},
   }
 
   // X=0, Z=2, P=2, Q=0
@@ -176,7 +176,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P2Q0"] = Instruction {
    "LDI (HL) A",
    1,
-   []func(*Cpu){no_op, x0z2q0p2_1},
+   []func(*Cpu){x0z2q0p2_1, no_op},
   }
 
   // X=0, Z=2, P=3, Q=1
@@ -188,7 +188,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P3Q1"] = Instruction {
    "LDD A (HL)",
    1,
-   []func(*Cpu){no_op, x0z2q1p3_1},
+   []func(*Cpu){x0z2q1p3_1, no_op},
   }
 
   // X=0, Z=2, P=2, Q=1
@@ -200,7 +200,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P2Q1"] = Instruction {
    "LDI A (HL)",
    1,
-   []func(*Cpu){no_op, x0z2q1p2_1},
+   []func(*Cpu){x0z2q1p2_1, no_op},
   }
 
   // X=2
@@ -266,7 +266,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y4"] = Instruction{
     "LD [0xFF00 + C], A",
     1,
-    []func(*Cpu){no_op, x3z2y4_1},
+    []func(*Cpu){x3z2y4_1, no_op},
   }
 
   x3z2y6_1 := func (cpu *Cpu) {
@@ -276,7 +276,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y6"] = Instruction{
     "LD A, [0xFF00 + C]",
     1,
-    []func(*Cpu){no_op, x3z2y6_1},
+    []func(*Cpu){x3z2y6_1, no_op},
   }
 
   x3y6z3_1 := func (cpu *Cpu) {
@@ -315,12 +315,6 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){x1_1},
   }
 
-  x3z0y4_1 := func (cpu *Cpu) {
-    // this is not used, we just split
-    // this up to satisfy timing
-    _ = cpu.ReadN()
-  }
-
   x3z0y4_2 := func (cpu *Cpu) {
     n := cpu.ReadN()
     cpu.Bus.WriteToBus(0xFF00 + uint16(n), cpu.A.read())
@@ -329,7 +323,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y4"] = Instruction{
     "LD [0xFF00+u8], A",
     2,
-    []func(*Cpu){no_op, x3z0y4_1, x3z0y4_2},
+    []func(*Cpu){no_op, no_op, x3z0y4_2},
   }
 
   x3z5q0_2 := func (cpu *Cpu) {
@@ -355,7 +349,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P0Q0"] = Instruction{
     "LD [BC], A",
     1,
-    []func(*Cpu){no_op, x0z2p0q0_1},
+    []func(*Cpu){x0z2p0q0_1, no_op},
   }
 
   x0z2p1q0_1 := func (cpu *Cpu) {
@@ -365,7 +359,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P1Q0"] = Instruction{
     "LD [DE], A",
     1,
-    []func(*Cpu){no_op, x0z2p1q0_1},
+    []func(*Cpu){x0z2p1q0_1, no_op},
   }
 
   x0z2p1q1_1 := func (cpu *Cpu) {
@@ -375,7 +369,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P1Q1"] = Instruction{
     "LD A, [DE]",
     1,
-    []func(*Cpu){no_op, x0z2p1q1_1},
+    []func(*Cpu){x0z2p1q1_1, no_op},
   }
 
   x0z2p0q1_1 := func (cpu *Cpu) {
@@ -385,7 +379,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X0Z2P0Q1"] = Instruction{
     "LD A, [BC]",
     1,
-    []func(*Cpu){no_op, x0z2p0q1_1},
+    []func(*Cpu){x0z2p0q1_1, no_op},
   }
 
   // combining Q=0 and Q=1 into one function
@@ -505,10 +499,6 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){no_op, no_op, call_push_hi, call_push_lo_and_jump},
   }
 
-  x3z0y6_1 := func(cpu *Cpu) {
-    _ = cpu.ReadN()
-  }
-
   x3z0y6_2 := func(cpu *Cpu) {
     cpu.A.write(cpu.Bus.ReadFromBus(0xFF00 + uint16(cpu.ReadN())))
   }
@@ -516,7 +506,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y6"] = Instruction{
     "LD A, [0xFF00+n]",
     2,
-    []func(*Cpu){no_op, x3z0y6_1, x3z0y6_2},
+    []func(*Cpu){no_op, no_op, x3z0y6_2},
   }
 
   x0z5_1 := func(cpu *Cpu) {
@@ -731,7 +721,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y7"] = Instruction{
     "LD A, [NN]",
     3,
-    []func(*Cpu){no_op, no_op, no_op, x3z2y7_1},
+    []func(*Cpu){no_op, no_op, x3z2y7_1, no_op},
   }
 
   x3z2y5_1 := func(cpu *Cpu) {
@@ -741,7 +731,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z2Y5"] = Instruction{
     "LD [NN], A",
     3,
-    []func(*Cpu){no_op, no_op, no_op, x3z2y5_1},
+    []func(*Cpu){no_op, no_op, x3z2y5_1, no_op},
   }
 
   // same as the rot functions but
@@ -1090,6 +1080,13 @@ func MakeInstructionMap() map[string]Instruction {
     []func(*Cpu){no_op, cbx1_1},
   }
 
+  cbx2_2 := func(cpu *Cpu) {
+    y := cpu.CurrentOpcode.Y
+    value := cpu.Bus.ReadFromBus(cpu.HL.read())
+    result := value & ^(0x1 << y)
+    cpu.Bus.WriteToBus(cpu.HL.read(), result)
+  }
+
   cbx2_1 := func(cpu *Cpu) {
     y := cpu.CurrentOpcode.Y
     if cpu.CurrentOpcode.Z != 6 {
@@ -1098,12 +1095,8 @@ func MakeInstructionMap() map[string]Instruction {
       // place, then take complement
       reg.write(reg.read() & ^(0x1 << y))
     } else {
-      value := cpu.Bus.ReadFromBus(cpu.HL.read())
-      result := value & ^(0x1 << y)
-      cpu.Bus.WriteToBus(cpu.HL.read(), result)
-
       cpu.ExecutionQueue.Push(no_op)
-      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(cbx2_2)
     }
   }
 
@@ -1111,6 +1104,13 @@ func MakeInstructionMap() map[string]Instruction {
     "RES y, r[z]",
     1,
     []func(*Cpu){no_op, cbx2_1},
+  }
+
+  cbx3_2 := func(cpu *Cpu) {
+    y := cpu.CurrentOpcode.Y
+    value := cpu.Bus.ReadFromBus(cpu.HL.read())
+    result := (value | (0x1 << y))
+    cpu.Bus.WriteToBus(cpu.HL.read(), result)
   }
 
   cbx3_1 := func(cpu *Cpu) {
@@ -1121,12 +1121,8 @@ func MakeInstructionMap() map[string]Instruction {
       // place, then OR it with reg
       reg.write(reg.read() | (0x1 << y))
     } else {
-      value := cpu.Bus.ReadFromBus(cpu.HL.read())
-      result := (value | (0x1 << y))
-      cpu.Bus.WriteToBus(cpu.HL.read(), result)
-
       cpu.ExecutionQueue.Push(no_op)
-      cpu.ExecutionQueue.Push(no_op)
+      cpu.ExecutionQueue.Push(cbx3_2)
     }
   }
 
@@ -1144,12 +1140,11 @@ func MakeInstructionMap() map[string]Instruction {
     }
     cpu.isHalted = true
 
-    pendingInt := (cpu.Bus.ReadFromBus(0xFFFF) & cpu.Bus.ReadFromBus(0xFF0F)) != 0
-    pendingInt = pendingInt || cpu.justDidInterrupt
+    pendingInt := (cpu.Bus.ReadFromBus(IE) & cpu.Bus.ReadFromBus(IF)) != 0
 
     // unhalt if pending interrupt, regardless of IME
     // DoInterrupts() will check IME to decide whether to service interrupt
-    if pendingInt {
+    if pendingInt || cpu.justDidInterrupt {
       cpu.isHalted = false
       fmt.Printf("unhalted\n")
       return
