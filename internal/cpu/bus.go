@@ -1,7 +1,6 @@
 package cpu
 
 import (
-  "fmt"
   "io/ioutil"
   "log"
 )
@@ -109,7 +108,6 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.dmaCounter = 0
       bus.dmaStartAddress = uint16(value) << 8
       bus.dmaInProgress = true
-      fmt.Printf("DMA initiated %02x %04X\n", value, bus.dmaStartAddress)
     default:
       bus.memory[address].write(value)
   }
@@ -148,12 +146,10 @@ func (bus *Bus) doCycle() {
     return
   }
   if bus.dmaCounter == 0 {
-    fmt.Printf("first DMA cycle\n")
     bus.dmaCounter += 1
     // do nothing for one cycle
     return
   } else if bus.dmaCounter > 160 {
-    fmt.Printf("last DMA cycle %d\n", bus.dmaCounter)
     bus.dmaInProgress = false
     bus.dmaCounter = 0
     return
@@ -163,7 +159,6 @@ func (bus *Bus) doCycle() {
     destAddress := OAM_START + uint16(bus.dmaCounter) - 1
     // TODO: need to read directly so i can block reads
     value := bus.ReadFromBus(sourceAddress)
-    fmt.Printf("start:%04X S:%04X D:%04X V:%02X\n", bus.dmaStartAddress, sourceAddress, destAddress, value)
     bus.ppu.write(destAddress, value)
     bus.dmaCounter += 1
   }

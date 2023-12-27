@@ -380,6 +380,7 @@ func (cpu *Cpu) Execute() {
   counter := 0
   for {
     cpu.LogSerial()
+    // TODO: refactor all this into Bus.doCycle()
     cpu.Bus.timers.doCycle()
     cpu.Bus.joypad.doCycle()
     cpu.Bus.doCycle()

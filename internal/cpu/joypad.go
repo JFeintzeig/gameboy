@@ -20,38 +20,41 @@ type Joypad struct {
 
 func (j *Joypad) read() uint8 {
   j.mu.RLock()
-  var keypress uint8
+  var keypress uint8 = 0b1111
   // select
   if GetBitBool(j.value, 5) {
     if p, ok := j.keyboard["start"]; p.isPressed && ok {
-      SetBit(keypress, 3, 1)
+      SetBit(keypress, 3, 0)
     }
     if p, ok := j.keyboard["select"]; p.isPressed && ok {
-      SetBit(keypress, 2, 1)
+      SetBit(keypress, 2, 0)
     }
     if p, ok := j.keyboard["a"]; p.isPressed && ok {
-      SetBit(keypress, 1, 1)
+      SetBit(keypress, 1, 0)
     }
     if p, ok := j.keyboard["b"]; p.isPressed && ok {
-      SetBit(keypress, 0, 1)
+      SetBit(keypress, 0, 0)
     }
   }
   // d-pad
   if GetBitBool(j.value, 4) {
     if p, ok := j.keyboard["down"]; p.isPressed && ok {
-      SetBit(keypress, 3, 1)
+      SetBit(keypress, 3, 0)
     }
     if p, ok := j.keyboard["up"]; p.isPressed && ok {
-      SetBit(keypress, 2, 1)
+      SetBit(keypress, 2, 0)
     }
     if p, ok := j.keyboard["left"]; p.isPressed && ok {
-      SetBit(keypress, 1, 1)
+      SetBit(keypress, 1, 0)
     }
     if p, ok := j.keyboard["right"]; p.isPressed && ok {
-      SetBit(keypress, 0, 1)
+      SetBit(keypress, 0, 0)
     }
   }
-  fmt.Printf("joypad read: %08b\n", (j.value & 0xF0) | (keypress & 0x0F))
+  if (keypress & 0x0F) != 0b1111 {
+    // TODO: this never shows a key as being pressed :(
+    fmt.Printf("reading a joypad keypress!!!!: %08b\n", (j.value & 0xF0) | (keypress & 0x0F))
+  }
   j.mu.RUnlock()
   return (j.value & 0xF0) | (keypress & 0x0F)
 }
@@ -65,6 +68,8 @@ func (j *Joypad) doCycle() {
   requestInterrupt := false
   j.mu.RLock()
   for _, v := range j.keyboard {
+    // TODO: this triggers many interrupts b/c display.go runs at 60Hz vs this runs way faster
+    // Maybe easier to refactor to channels
     if v.isJustPressed {
       requestInterrupt = true
     }
