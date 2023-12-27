@@ -18,3 +18,6 @@ test_mem_timing: app
 
 test_other: app
 	./scripts/run_other_tests.sh
+
+test_acid: app
+	./app -file ../gameboy_resources/dmg-acid2/dmg-acid2.gb -bootrom

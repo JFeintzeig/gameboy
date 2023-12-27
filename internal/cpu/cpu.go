@@ -134,6 +134,7 @@ func (t *Timers) doCycle() {
 
   // fire interrupt + reset TIMA the cycle after it overflowed
   if t.justOverflowed {
+    //fmt.Printf("timer int tima:%02X timaEnabled:%t timaMask: %16b tma:%02X div:%04X\n", t.tima.read(), t.timaEnabled, t.timaMask, t.tma.read(), t.divCounter)
     interruptFlags := t.bus.ReadFromBus(0xFF0F)
     interruptFlags |= 0x4
     t.bus.WriteToBus(0xFF0F, interruptFlags)
@@ -356,7 +357,7 @@ func (cpu *Cpu) DoInterrupts() {
   for _, index := range []uint8{0,1,2,3} {
     isRequested := (interruptsToService >> index) & 0x01
     if isRequested == 0x01 {
-      fmt.Printf("serving interrupt IME:%t IE:%08b IF:%08b\n", cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
+      //fmt.Printf("serving interrupt IME:%t IE:%08b IF:%08b\n", cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
       cpu.justDidInterrupt = true
       // reset flag bit
       mask := uint8(1 << index)
@@ -601,21 +602,12 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.InstructionMap = MakeInstructionMap()
 
   // returns a *Bus
-  bus := NewBus(*romFilePath)
+  bus := NewBus(*romFilePath, useBootRom)
   gb.Bus = bus
-  gb.Bus.LoadROM()
 
   gb.IncrementPC = false
 
-  // until video is implemented :(
-  //gb.Bus.WriteToBus(0xFF44, 0xFF)
-  // is this needed?
-  // https://github.com/Gekkio/mooneye-test-suite#passfail-reporting
-  //gb.Bus.WriteToBus(0xFF02, 0xFF)
-
-  if useBootRom {
-    gb.Bus.LoadBootROM()
-  } else {
+  if !useBootRom {
     gb.A.write(0x01)
     gb.F.write(0xB0)
     gb.B.write(0x00)

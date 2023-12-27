@@ -1,9 +1,12 @@
 package cpu
 
 import (
-	"io/ioutil"
+  "fmt"
 	"log"
+  "os"
 )
+
+const BOOT_ROM_FILEPATH = "data/bootrom_dmg.gb"
 
 const (
   DIV = 0xFF04
@@ -36,12 +39,14 @@ type Mediator interface {
 }
 
 type Bus struct {
-  cartridge [32*1024]Register8
   memory [64*1024]Register8
   ppu *Ppu
   timers *Timers
   joypad *Joypad
   romFilePath string
+  cartridge Cartridge
+  bootROM Cartridge
+  isBootROMMapped bool
 
   // DMA
   dmaInProgress bool
@@ -51,8 +56,14 @@ type Bus struct {
 
 func (bus *Bus) ReadFromBus(address uint16) uint8 {
   switch {
-    case address < 0x8000:
-      return bus.cartridge[address].read()
+    case address < 0x100:
+      if bus.isBootROMMapped {
+        return bus.bootROM.read(address)
+      } else {
+        return bus.cartridge.read(address)
+      }
+    case address >= 0x100 && address < 0x8000:
+      return bus.cartridge.read(address)
     case address >= 0x8000 && address <= 0x9FFF:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M3 {
@@ -68,6 +79,7 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
         return bus.ppu.read(address)
       }
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
+      fmt.Printf("read from timers\n")
       return bus.timers.read(address)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       return bus.ppu.read(address)
@@ -100,12 +112,13 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
         bus.ppu.write(address, value)
       }
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
+      fmt.Printf("write to timers %04X %02X\n", address, value)
       bus.timers.write(address, value)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       bus.ppu.write(address, value)
     case address == BANK:
       if bus.memory[address].read() == 0 {
-        bus.LoadROM()
+        bus.isBootROMMapped = false
       }
       bus.memory[address].write(value)
     case address == P1:
@@ -116,34 +129,6 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.dmaInProgress = true
     default:
       bus.memory[address].write(value)
-  }
-}
-
-func (bus *Bus) LoadROM() {
-  data, err := ioutil.ReadFile(bus.romFilePath)
-  if err != nil {
-    log.Fatal("can't find file")
-  }
-  if len(data) > 32*1024 {
-    log.Fatal("I can only do 32kb ROMs")
-  }
-  for address, element := range data {
-    // starts at 0x0, first 256 bytes
-    // will be overwitten by boot rom
-    bus.cartridge[uint16(address)].write(element)
-  }
-}
-
-// TODO: somehow need to unmap this after the BootROM finishes
-// monitor FF50 and then reload game cartridge?
-// https://gbdev.io/pandocs/Memory_Map.html#io-ranges
-func (bus *Bus) LoadBootROM() {
-  data, err := ioutil.ReadFile("data/bootrom_dmg.gb")
-  if err != nil {
-    log.Fatal("can't find boot rom")
-  }
-  for address, element := range data {
-    bus.cartridge[uint16(address)].write(element)
   }
 }
 
@@ -170,7 +155,7 @@ func (bus *Bus) doCycle() {
   }
 }
 
-func NewBus(romFilePath string) *Bus {
+func NewBus(romFilePath string, useBootROM bool) *Bus {
   bus := Bus{}
 
   // returns a *Ppu
@@ -184,8 +169,47 @@ func NewBus(romFilePath string) *Bus {
   bus.joypad.bus = &bus
 
   bus.romFilePath = romFilePath
+  bus.cartridge = NewCartridge(romFilePath)
+  bus.bootROM = NewCartridge(BOOT_ROM_FILEPATH)
+  bus.isBootROMMapped = useBootROM
 
   bus.dmaInProgress = false
 
   return &bus
+}
+
+type Cartridge interface {
+  read(uint16) uint8
+  write(uint16, uint8)
+}
+
+
+type NoMBC struct {
+  rawCartridgeData []Register8
+}
+
+func (c *NoMBC) read(address uint16) uint8 {
+  return c.rawCartridgeData[address].read()
+}
+
+func (c *NoMBC) write(address uint16, value uint8) {
+  c.rawCartridgeData[address].write(value)
+}
+
+func NewCartridge(romFilePath string) Cartridge {
+  fi, err := os.Stat(romFilePath)
+  fSize := fi.Size()
+  data, err := os.ReadFile(romFilePath)
+  if err != nil {
+    log.Fatal("can't find file")
+  }
+  if len(data) > 32*1024 {
+    log.Fatal("I can only do 32kb ROMs")
+  }
+  cartridgeData := make([]Register8, fSize)
+  // implicit: index of array is address in memory :eek:
+  for address, element := range data {
+    cartridgeData[address].write(element)
+  }
+  return &NoMBC{rawCartridgeData: cartridgeData}
 }
