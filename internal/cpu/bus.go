@@ -95,8 +95,7 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
 func (bus *Bus) WriteToBus(address uint16, value uint8) {
   switch {
     case address < 0x8000:
-      // ROM is ready-only
-      return
+      bus.cartridge.write(address, value)
     case address >= 0x8000 && address <= 0x9FFF:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M3 {
@@ -193,8 +192,47 @@ func (c *NoMBC) read(address uint16) uint8 {
 }
 
 func (c *NoMBC) write(address uint16, value uint8) {
-  c.rawCartridgeData[address].write(value)
+  //NoMBC is read-only
+  return
 }
+
+//type MBC1 struct {
+//  rawCartridgeData []Register8
+//  romBank uint8
+//  ramBank uint8
+//  mode bool
+//  enableRAM bool
+//}
+//
+//func (c *MBC1) size() int {
+//  return len(c.rawCartridgeData)
+//}
+//
+//func (c *MBC1) read(address uint16) uint8 {
+//  //TODO
+//  return c.rawCartridgeData[address].read()
+//}
+//
+//func (c *MBC1) write(address uint16, value uint8) {
+//  //TODO
+//  switch {
+//  case address <= 0x1FFF:
+//    if (address & 0x000F) == 0xA {
+//    c.enableRAM = true
+//    } else {
+//      c.enableRAM = false
+//    }
+//  case address >= 0x2000 && address <= 0x3FFF:
+//    var mask uint8
+//    if c.size() >= 512*1024 {
+//      mask = 0b00011111
+//    } else if c.size() >= 0 {
+//    }
+//    uint16(mask) & address
+//  default:
+//    c.rawCartridgeData[address].write(value)
+//  }
+//}
 
 func NewCartridge(romFilePath string) Cartridge {
   fi, err := os.Stat(romFilePath)
