@@ -201,13 +201,11 @@ type MBC1 struct {
   romSize uint32
   ramSize uint16
 
-  // TODO: initialize romBank as 1
   romBank uint8
   ramBank uint8
   mode uint8
   isRAMEnabled bool
 
-  //TODO: need to initialize this!
   ram []Register8
 }
 
