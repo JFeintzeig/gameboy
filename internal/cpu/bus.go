@@ -196,43 +196,110 @@ func (c *NoMBC) write(address uint16, value uint8) {
   return
 }
 
-//type MBC1 struct {
-//  rawCartridgeData []Register8
-//  romBank uint8
-//  ramBank uint8
-//  mode bool
-//  enableRAM bool
-//}
-//
-//func (c *MBC1) size() int {
-//  return len(c.rawCartridgeData)
-//}
-//
-//func (c *MBC1) read(address uint16) uint8 {
-//  //TODO
-//  return c.rawCartridgeData[address].read()
-//}
-//
-//func (c *MBC1) write(address uint16, value uint8) {
-//  //TODO
-//  switch {
-//  case address <= 0x1FFF:
-//    if (address & 0x000F) == 0xA {
-//    c.enableRAM = true
-//    } else {
-//      c.enableRAM = false
-//    }
-//  case address >= 0x2000 && address <= 0x3FFF:
-//    var mask uint8
-//    if c.size() >= 512*1024 {
-//      mask = 0b00011111
-//    } else if c.size() >= 0 {
-//    }
-//    uint16(mask) & address
-//  default:
-//    c.rawCartridgeData[address].write(value)
-//  }
-//}
+type MBC1 struct {
+  rawCartridgeData []Register8
+  romSize uint32
+  ramSize uint16
+
+  // TODO: initialize romBank as 1
+  romBank uint8
+  ramBank uint8
+  mode uint8
+  isRAMEnabled bool
+
+  //TODO: need to initialize this!
+  ram []Register8
+}
+
+func (c *MBC1) read(address uint16) uint8 {
+  var idx uint16
+  switch {
+  case address <= 0x3FFF:
+    var idx uint16
+    if c.mode == 0 {
+      idx = address
+    } else {
+      var zerobanknumber uint8
+      if c.romSize < 1024*1024 {
+        zerobanknumber = 0
+      } else if c.romSize == 1024*1024 {
+        zerobanknumber = GetBit(c.ramBank,0) << 5
+      } else if c.romSize == 2*1024*1024 {
+        zerobanknumber = c.ramBank << 5
+      } else {
+        panic("unknown rom size for MBC1 reads")
+      }
+      idx = 0x4000 * uint16(zerobanknumber) + address
+    }
+    return c.rawCartridgeData[idx].read()
+  case address >= 0x4000 && address <= 0x7FFF:
+    // TODO
+    highbanknumber := 0
+    idx = 0x4000 * uint16(highbanknumber) + (address - 0x4000)
+    return c.rawCartridgeData[idx].read()
+  case address >= 0xA000 && address <= 0xBFFF:
+    if c.isRAMEnabled {
+      if c.ramSize == 2*1024 || c.ramSize == 8*1024 {
+        idx = (address - 0xA000) % c.ramSize
+      } else if c.ramSize == 32*1024 {
+        // mode is either 0 or 1
+        idx = uint16(c.mode) * 0x2000 * uint16(c.ramBank) + (address - 0xA000)
+      }
+      return c.ram[idx].read()
+    } else {
+      return 0xFF
+    }
+  default:
+    panic("MBC1 unknown read operation")
+  }
+}
+
+func (c *MBC1) write(address uint16, value uint8) {
+  switch {
+  case address <= 0x1FFF:
+    if (address & 0x000F) == 0xA {
+    c.isRAMEnabled = true
+    } else {
+      c.isRAMEnabled = false
+    }
+  case address >= 0x2000 && address <= 0x3FFF:
+    var mask uint8
+    if value == 0 {
+      c.romBank = 1
+      return
+    } else if c.romSize >= 512*1024 {
+      mask = 0b00011111
+    } else if c.romSize == 256*1024 {
+      mask = 0b00001111
+    } else if c.romSize == 128*1024 {
+      mask = 0b00000111
+    } else if c.romSize == 64*1024 {
+      mask = 0b00000011
+    } else if c.romSize == 32 * 1024 {
+      mask = 0b00000001
+    }
+    c.romBank = (mask & value)
+  case address >= 0x4000 && address <= 0x5FFF:
+    c.ramBank = (value & 0x03)
+  case address >= 0x6000 && address <= 0x7FFF:
+    c.mode = GetBit(value, 0)
+  case address >= 0xA000 && address <= 0xBFFF:
+    if c.isRAMEnabled {
+      if c.ramSize == 2*1024 || c.ramSize == 8*1024 {
+        idx := (address - 0xA000) % c.ramSize
+        c.ram[idx].write(value)
+      } else if c.ramSize == 32*1024 {
+        // mode is either 0 or 1
+        idx := uint16(c.mode) * 0x2000 * uint16(c.ramBank) + (address - 0xA000)
+        c.ram[idx].write(value)
+      } else {
+        panic("unexpected ram size!")
+      }
+    }
+  default:
+    panic("unexpected MBC1 write operation")
+  }
+}
 
 func NewCartridge(romFilePath string) Cartridge {
   fi, err := os.Stat(romFilePath)
@@ -249,5 +316,20 @@ func NewCartridge(romFilePath string) Cartridge {
   for address, element := range data {
     cartridgeData[address].write(element)
   }
-  return &NoMBC{rawCartridgeData: cartridgeData}
+
+  cartridgeType := cartridgeData[0x147].read()
+  var romSize uint32 = 32 * 1024 * (1 << cartridgeData[0x148].read())
+  // TODO: finish calculating ramSize!
+  var ramSize uint16 = uint16(cartridgeData[0x149].read())
+  if cartridgeType == 0x00 {
+    return &NoMBC{rawCartridgeData: cartridgeData}
+  } else if cartridgeType == 0x01 {
+    ramSize = 0x00
+    return &MBC1{rawCartridgeData: cartridgeData, romSize: romSize, ramSize: ramSize, romBank: 1}
+  } else if cartridgeType <= 0x03 {
+    ram := make([]Register8, ramSize)
+    return &MBC1{rawCartridgeData: cartridgeData, romSize: romSize, ramSize: ramSize, romBank: 1, ram: ram}
+  } else {
+    panic("unknown MBC type!")
+  }
 }
