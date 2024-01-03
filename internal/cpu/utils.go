@@ -1,6 +1,9 @@
 package cpu
 
 func SetBit(value uint8, bitNum uint8, bitVal uint8) uint8 {
+  if bitVal > 0x01 {
+    panic("bitVal must be 0 or 1")
+  }
   if bitVal == 1 {
     return value | (bitVal << bitNum)
   } else {
