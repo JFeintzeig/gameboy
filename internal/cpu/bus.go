@@ -71,6 +71,8 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       } else {
         return bus.ppu.read(address)
       }
+    case address >= 0xA000 && address <= 0xBFFF:
+      return bus.cartridge.read(address)
     case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
@@ -103,6 +105,8 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       } else {
         bus.ppu.write(address, value)
       }
+    case address >= 0xA000 && address <= 0xBFFF:
+      bus.cartridge.write(address, value)
     case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
@@ -278,7 +282,7 @@ func (c *MBC1) read(address uint16) uint8 {
 func (c *MBC1) write(address uint16, value uint8) {
   switch {
   case address <= 0x1FFF:
-    if (address & 0x000F) == 0xA {
+    if (value & 0x0F) == 0xA {
     c.isRAMEnabled = true
     } else {
       c.isRAMEnabled = false
