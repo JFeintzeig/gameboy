@@ -7,7 +7,6 @@ import (
 )
 
 const ClockSpeed uint64 = 1048576 // M-cycle
-//const ClockSpeed uint64 = 1100
 
 type Timers struct {
   bus Mediator
@@ -379,7 +378,11 @@ func (cpu *Cpu) DoInterrupts() {
 }
 
 func (cpu *Cpu) Execute() {
-  counter := 0
+  var counter uint64 = 0
+  var loopsPerFrame uint64 = cpu.ClockSpeed / 60
+  timePerFrame := time.Duration(16.74 * 1e6)
+  start := time.Now()
+
   for {
     cpu.LogSerial()
     // TODO: refactor all this into Bus.doCycle()
@@ -411,8 +414,15 @@ func (cpu *Cpu) Execute() {
     counter++
     cpu.DoInterrupts()
 
-    // TODO: validate this sleeps how long i want
-    time.Sleep(time.Duration(1000/cpu.ClockSpeed) * time.Millisecond)
+    // time true-up once per frame
+    if !cpu.fast && counter > loopsPerFrame {
+      delta := time.Now().Sub(start)
+      if delta < timePerFrame {
+        time.Sleep(timePerFrame - delta) // remaining time
+      }
+      counter = 0
+      start = time.Now()
+    }
   }
 }
 
@@ -453,6 +463,8 @@ type Cpu struct {
   IME bool
   isHalted bool
   justDidInterrupt bool
+
+  fast bool
 }
 
 func (cpu *Cpu) getFlagZ() uint8 {
@@ -582,7 +594,7 @@ func NewRegister16(hi *Register8, lo *Register8) Register16 {
   return reg16
 }
 
-func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
+func NewGameBoy(romFilePath *string, useBootRom bool, fast bool) *Cpu {
   gb := Cpu{}
 
   gb.AF = NewRegister16(&gb.A, &gb.F)
@@ -606,6 +618,7 @@ func NewGameBoy(romFilePath *string, useBootRom bool) *Cpu {
   gb.Bus = bus
 
   gb.IncrementPC = false
+  gb.fast = fast
 
   if !useBootRom {
     gb.A.write(0x01)
