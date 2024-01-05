@@ -192,7 +192,14 @@ type NoMBC struct {
 }
 
 func (c *NoMBC) read(address uint16) uint8 {
-  return c.rawCartridgeData[address].read()
+  switch {
+  case address <= 0x7FFF:
+    return c.rawCartridgeData[address].read()
+  case address >= 0xA000 && address <= 0xB000:
+    return 0xFF
+  default:
+    return 0xFF
+  }
 }
 
 func (c *NoMBC) write(address uint16, value uint8) {
@@ -234,7 +241,6 @@ func (c *MBC1) read(address uint16) uint8 {
   var idx uint16
   switch {
   case address <= 0x3FFF:
-    var idx uint16
     if c.mode == 0 {
       idx = address
     } else {
@@ -249,16 +255,18 @@ func (c *MBC1) read(address uint16) uint8 {
         panic("unknown rom size for MBC1 reads")
       }
       idx = 0x4000 * uint16(zerobanknumber) + address
+      fmt.Printf("zero bank number: %d address: %04X\n", zerobanknumber, idx)
     }
+    fmt.Printf("mbc1 read: %04X %04X %02X %d %d %d %t\n", address, idx, c.rawCartridgeData[idx].read(), c.romBank, c.ramBank, c.mode, c.isRAMEnabled)
     return c.rawCartridgeData[idx].read()
   case address >= 0x4000 && address <= 0x7FFF:
     highbanknumber := c.romBank & c.romsizemask()
     if c.romSize == 1024*1024 {
-      SetBit(highbanknumber, 5, c.ramBank & 0x01)
+      highbanknumber = SetBit(highbanknumber, 5, c.ramBank & 0x01)
     }
     if c.romSize == 2*1024*1024 {
-      SetBit(highbanknumber, 5, c.ramBank & 0x01)
-      SetBit(highbanknumber, 6, c.ramBank & 0x02)
+      highbanknumber = SetBit(highbanknumber, 5, c.ramBank & 0x01)
+      highbanknumber = SetBit(highbanknumber, 6, c.ramBank & 0x02)
     }
     idx = 0x4000 * uint16(highbanknumber) + (address - 0x4000)
     return c.rawCartridgeData[idx].read()
