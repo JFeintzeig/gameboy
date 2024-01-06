@@ -81,7 +81,6 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
         return bus.ppu.read(address)
       }
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
-      fmt.Printf("read from timers\n")
       return bus.timers.read(address)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       return bus.ppu.read(address)
@@ -115,7 +114,6 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
         bus.ppu.write(address, value)
       }
     case (address == DIV || address == TIMA || address == TMA || address == TAC):
-      fmt.Printf("write to timers %04X %02X\n", address, value)
       bus.timers.write(address, value)
     case (address == LCDC || address == STAT || address == LY || address == LYC || address == SCX || address == SCY || address == WX || address == WY || address == BGP || address == OBP0 || address == OBP1):
       bus.ppu.write(address, value)
@@ -255,9 +253,7 @@ func (c *MBC1) read(address uint16) uint8 {
         panic("unknown rom size for MBC1 reads")
       }
       idx = 0x4000 * uint16(zerobanknumber) + address
-      fmt.Printf("zero bank number: %d address: %04X\n", zerobanknumber, idx)
     }
-    fmt.Printf("mbc1 read: %04X %04X %02X %d %d %d %t\n", address, idx, c.rawCartridgeData[idx].read(), c.romBank, c.ramBank, c.mode, c.isRAMEnabled)
     return c.rawCartridgeData[idx].read()
   case address >= 0x4000 && address <= 0x7FFF:
     highbanknumber := c.romBank & c.romsizemask()

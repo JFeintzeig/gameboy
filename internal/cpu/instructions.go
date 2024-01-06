@@ -856,6 +856,7 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   x0z0y2_1 := func(cpu *Cpu) {
+    fmt.Printf("STOP PC %04X SP %04X\n", cpu.PC.read(), cpu.SP.read())
     panic("STOP")
   }
 
@@ -1136,7 +1137,7 @@ func MakeInstructionMap() map[string]Instruction {
   halt := func(cpu *Cpu){
     // make it halt
     if !cpu.isHalted {
-      fmt.Printf("starting halt PC:%04X IME:%t IE:%08b IF:%08b\n", cpu.PC.read(), cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
+      //fmt.Printf("starting halt PC:%04X IME:%t IE:%08b IF:%08b\n", cpu.PC.read(), cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
     }
     cpu.isHalted = true
 
@@ -1146,7 +1147,7 @@ func MakeInstructionMap() map[string]Instruction {
     // DoInterrupts() will check IME to decide whether to service interrupt
     if pendingInt || cpu.justDidInterrupt {
       cpu.isHalted = false
-      fmt.Printf("unhalted\n")
+      //fmt.Printf("unhalted\n")
       return
     }
 

@@ -277,7 +277,7 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         case (op.X == 3) && (op.Z == 7):
           inst = cpu.InstructionMap["X3Z7"]
         default:
-          fmt.Printf("PC:%04X OC:%xv\n", cpu.PC.read(), cpu.CurrentOpcode)
+          fmt.Printf("PC:%04X SP:%04X OC:%xv\n", cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode)
           err := fmt.Sprintf("not implemented, instr: %xv", op)
           panic(err)
         }
