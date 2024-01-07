@@ -381,6 +381,7 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
   start := time.Now()
 
   for {
+    cpu.DoInterrupts()
     cpu.LogSerial()
     // TODO: refactor all this into Bus.doCycle()
     cpu.Bus.timers.doCycle()
@@ -398,7 +399,6 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
     //    and RETI so it waits one instruction, not a specific PC
     //    
     // Timers -> PPU -> Int -> CPU: acid2 stuck in HALT after jumping to LC_08
-    cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 
     if cpu.ExecutionQueue.Length() < 1 {
@@ -413,7 +413,6 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
     microop := cpu.ExecutionQueue.Pop()
     microop(cpu)
     counter++
-    cpu.DoInterrupts()
 
     // time true-up once per frame
     if !cpu.fast && counter > loopsPerFrame {
