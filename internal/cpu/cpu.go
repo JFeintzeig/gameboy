@@ -32,8 +32,6 @@ func (t *Timers) read(address uint16) uint8 {
     return t.readTAC()
   } else {
     panic("address not in timers")
-    // TODO: return an error?
-    return 0
   }
 }
 
@@ -169,7 +167,6 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           default:
             err := fmt.Sprintf("CB-prefixed not implemented, instr: %v",op)
             panic(err)
-            inst = Instruction{}
         }
         return &inst
       } else {
@@ -277,7 +274,7 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         case (op.X == 3) && (op.Z == 7):
           inst = cpu.InstructionMap["X3Z7"]
         default:
-          fmt.Printf("PC:%04X SP:%04X OC:%v\n", cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode)
+          fmt.Printf("unimplemented opcode: PC:%04X SP:%04X OC:%v\n", cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode)
           err := fmt.Sprintf("not implemented, instr: %v", op)
           panic(err)
         }
@@ -401,12 +398,16 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
     //    and RETI so it waits one instruction, not a specific PC
     //    
     // Timers -> PPU -> Int -> CPU: acid2 stuck in HALT after jumping to LC_08
-    //cpu.DoInterrupts()
+    cpu.DoInterrupts()
     cpu.Bus.ppu.doCycle()
 
     if cpu.ExecutionQueue.Length() < 1 {
         cpu.SetIME()
         cpu.FetchAndDecode()
+    }
+
+    if !forever && cpu.globalCounter == nCyles {
+      break
     }
 
     microop := cpu.ExecutionQueue.Pop()
@@ -423,9 +424,7 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
       counter = 0
       start = time.Now()
     }
-    if !forever && cpu.globalCounter == nCyles {
-      break
-    }
+
     cpu.globalCounter += 1
   }
 }
