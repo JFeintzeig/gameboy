@@ -67,6 +67,8 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
     case address >= 0x8000 && address <= 0x9FFF:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M3 {
+        // TODO
+        return bus.ppu.read(address)
         return 0xFF
       } else {
         return bus.ppu.read(address)
@@ -76,6 +78,8 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
     case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
+        // TODO
+        return bus.ppu.read(address)
         return 0xFF
       } else {
         return bus.ppu.read(address)
