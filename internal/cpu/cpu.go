@@ -381,7 +381,7 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
   start := time.Now()
 
   for {
-    //cpu.LogSerial()
+    cpu.LogSerial()
     // TODO: refactor all this into Bus.doCycle()
     cpu.Bus.timers.doCycle()
     cpu.Bus.joypad.doCycle()
