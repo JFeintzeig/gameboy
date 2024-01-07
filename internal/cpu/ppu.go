@@ -555,8 +555,8 @@ func (ppu *Ppu) doCycle() {
         ppu.windowLineCounter = 0
 
         // VBlank interrupt
-        IF := ppu.bus.ReadFromBus(0xFF0F)
-        ppu.bus.WriteToBus(0xFF0F, SetBitBool(IF, 0, true))
+        rIF := ppu.bus.ReadFromBus(IF)
+        ppu.bus.WriteToBus(IF, SetBitBool(rIF, 0, true))
       } else {
         ppu.currentMode = M2
       }

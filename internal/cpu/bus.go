@@ -48,6 +48,9 @@ type Bus struct {
   bootROM Cartridge
   isBootROMMapped bool
 
+  rIF Register8
+  rIE Register8
+
   // DMA
   dmaInProgress bool
   dmaStartAddress uint16
@@ -92,6 +95,10 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       return bus.joypad.read()
     case address == DMA:
       return uint8(bus.dmaStartAddress >> 8)
+    case address == IE:
+      return bus.rIE.read()
+    case address == IF:
+      return bus.rIF.read()
     default:
       return bus.memory[address].read()
   }
@@ -132,6 +139,10 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.dmaCounter = 0
       bus.dmaStartAddress = uint16(value) << 8
       bus.dmaInProgress = true
+    case address == IE:
+      bus.rIE.write(value)
+    case address == IF:
+      bus.rIF.write(value)
     default:
       bus.memory[address].write(value)
   }
