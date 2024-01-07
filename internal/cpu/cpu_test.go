@@ -63,7 +63,7 @@ func SetInitialState(cpu *Cpu, s State) {
   } else {
     cpu.IME = true
   }
-  cpu.Bus.WriteToBus(IE, s.IE)
+  //cpu.Bus.WriteToBus(IE, s.IE)
   for i := 0; i < len(s.Ram); i += 1 {
     cpu.Bus.WriteToBus(s.Ram[i][0], uint8(s.Ram[i][1]))
   }
