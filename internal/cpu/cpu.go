@@ -167,7 +167,7 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
           case op.X == 3:
             inst = cpu.InstructionMap["CBX3"]
           default:
-            err := fmt.Sprintf("CB-prefixed not implemented, instr: %xv",op)
+            err := fmt.Sprintf("CB-prefixed not implemented, instr: %v",op)
             panic(err)
             inst = Instruction{}
         }
@@ -277,8 +277,8 @@ func (cpu *Cpu) OpcodeToInstruction(op Opcode) *Instruction {
         case (op.X == 3) && (op.Z == 7):
           inst = cpu.InstructionMap["X3Z7"]
         default:
-          fmt.Printf("PC:%04X SP:%04X OC:%xv\n", cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode)
-          err := fmt.Sprintf("not implemented, instr: %xv", op)
+          fmt.Printf("PC:%04X SP:%04X OC:%v\n", cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode)
+          err := fmt.Sprintf("not implemented, instr: %v", op)
           panic(err)
         }
         return &inst
@@ -356,7 +356,7 @@ func (cpu *Cpu) DoInterrupts() {
   for _, index := range []uint8{0,1,2,3} {
     isRequested := (interruptsToService >> index) & 0x01
     if isRequested == 0x01 {
-      //fmt.Printf("serving interrupt IME:%t IE:%08b IF:%08b\n", cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF))
+      //fmt.Printf("serving interrupt IME:%t IE:%08b IF:%08b PC:%04X GC:%d\n", cpu.IME, cpu.Bus.ReadFromBus(IE), cpu.Bus.ReadFromBus(IF), cpu.PC.read(), cpu.globalCounter)
       cpu.justDidInterrupt = true
       // reset flag bit
       mask := uint8(1 << index)
@@ -377,14 +377,14 @@ func (cpu *Cpu) DoInterrupts() {
   }
 }
 
-func (cpu *Cpu) Execute() {
+func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
   var counter uint64 = 0
   var loopsPerFrame uint64 = cpu.ClockSpeed / 60
   timePerFrame := time.Duration(16.74 * 1e6)
   start := time.Now()
 
   for {
-    cpu.LogSerial()
+    //cpu.LogSerial()
     // TODO: refactor all this into Bus.doCycle()
     cpu.Bus.timers.doCycle()
     cpu.Bus.joypad.doCycle()
@@ -423,6 +423,10 @@ func (cpu *Cpu) Execute() {
       counter = 0
       start = time.Now()
     }
+    if !forever && cpu.globalCounter == nCyles {
+      break
+    }
+    cpu.globalCounter += 1
   }
 }
 
@@ -465,6 +469,8 @@ type Cpu struct {
   justDidInterrupt bool
 
   fast bool
+
+  globalCounter uint64
 }
 
 func (cpu *Cpu) getFlagZ() uint8 {

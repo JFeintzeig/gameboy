@@ -6,7 +6,7 @@ import (
   "os"
 )
 
-const BOOT_ROM_FILEPATH = "data/bootrom_dmg.gb"
+const BOOT_ROM_FILEPATH = "/Users/jfeintzeig/projects/2023/gameboy/data/bootrom_dmg.gb"
 
 const (
   DIV = 0xFF04
@@ -193,7 +193,7 @@ func (c *NoMBC) read(address uint16) uint8 {
   switch {
   case address <= 0x7FFF:
     return c.rawCartridgeData[address].read()
-  case address >= 0xA000 && address <= 0xB000:
+  case address >= 0xA000 && address <= 0xBFFF:
     return 0xFF
   default:
     return 0xFF
@@ -366,15 +366,12 @@ func NewCartridge(romFilePath string, bootrom bool) Cartridge {
   }
 
   if cartridgeType == 0x00 {
-    fmt.Printf("Cartridge: NoMBC\n")
     return &NoMBC{rawCartridgeData: cartridgeData}
   } else if cartridgeType == 0x01 {
     ramSize = 0x00
-    fmt.Printf("Cartridge: MBC1 %d %d\n", romSize, ramSize)
     return &MBC1{rawCartridgeData: cartridgeData, romSize: romSize, ramSize: uint16(ramSize), romBank: 1}
   } else if cartridgeType <= 0x03 {
     ram := make([]Register8, ramSize)
-    fmt.Printf("Cartridge: MBC1 %d %d\n", romSize, ramSize)
     return &MBC1{rawCartridgeData: cartridgeData, romSize: romSize, ramSize: uint16(ramSize), romBank: 1, ram: ram}
   } else {
     panic("unknown MBC type!")

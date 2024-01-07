@@ -7,8 +7,6 @@ import (
   "log"
 )
 
-const display = true
-
 var (
   file *string
   bootrom *bool
@@ -27,16 +25,12 @@ func main() {
 
   gb := cpu.NewGameBoy(file, *bootrom, *fast)
 
-  if !display {
-    gb.Execute()
-  }
-
   ebiten.SetWindowSize(800, 720)
   ebiten.SetWindowTitle("Hello, World!")
   game, _ := cpu.NewEbitenGame(gb)
 
-  // infinite loop at chip8.clockSpeed
-  go gb.Execute()
+  // infinite loop at GB clockspeed
+  go gb.Execute(true, 0)
 
   // display updates @ 60Hz via infinite loop in ebiten
   if err := ebiten.RunGame(game); err != nil {
