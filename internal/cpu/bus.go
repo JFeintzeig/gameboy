@@ -40,6 +40,7 @@ type Mediator interface {
 
 type Bus struct {
   memory [64*1024]Register8
+  wram [8*1024]Register8
   ppu *Ppu
   timers *Timers
   joypad *Joypad
@@ -78,6 +79,10 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       }
     case address >= 0xA000 && address <= 0xBFFF:
       return bus.cartridge.read(address)
+    case address >= 0xC000 && address <= 0xDFFF:
+      return bus.wram[address - 0xC000].read()
+    case address >= 0xE000 && address <= 0xFDFF:
+      return bus.wram[address - 0xE000].read()
     case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
@@ -117,6 +122,10 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       }
     case address >= 0xA000 && address <= 0xBFFF:
       bus.cartridge.write(address, value)
+    case address >= 0xC000 && address <= 0xDFFF:
+      bus.wram[address - 0xC000].write(value)
+    case address >= 0xE000 && address <= 0xFDFF:
+      bus.wram[address - 0xE000].write(value)
     case address >= OAM_START && address <= OAM_END:
       mode := Mode(bus.ReadFromBus(STAT) & 0x03)
       if mode == M2 || mode == M3 {
