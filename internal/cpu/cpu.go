@@ -132,9 +132,9 @@ func (t *Timers) doCycle() {
   // fire interrupt + reset TIMA the cycle after it overflowed
   if t.justOverflowed {
     //fmt.Printf("timer int tima:%02X timaEnabled:%t timaMask: %16b tma:%02X div:%04X\n", t.tima.read(), t.timaEnabled, t.timaMask, t.tma.read(), t.divCounter)
-    interruptFlags := t.bus.ReadFromBus(0xFF0F)
+    interruptFlags := t.bus.ReadFromBus(IF)
     interruptFlags |= 0x4
-    t.bus.WriteToBus(0xFF0F, interruptFlags)
+    t.bus.WriteToBus(IF, interruptFlags)
     t.tima.write(t.tma.read())
 
     t.justOverflowed = false
