@@ -41,6 +41,35 @@ func no_op(cpu *Cpu) {
   return
 }
 
+//TODO: this _should_ work but tetris still broken
+// so for now i invalid logic with || !cpu.IncrementPC
+// Maybe refactor so each instruction increments PC
+// and CPU doesnt store any state about IncrementPC
+// and FetchAndDecode just fetches without increments
+func int_call_push_hi(cpu *Cpu) {
+  cpu.SP.dec()
+  var newPC uint16
+  if cpu.IncrementPC || !cpu.IncrementPC {
+    newPC = cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
+  } else {
+    newPC = cpu.PC.read()
+  }
+  cpu.Bus.WriteToBus(cpu.SP.read(), uint8(newPC >> 8))
+}
+
+//TODO: this _should_ work but tetris still broken
+// so for now i invalid logic with || !cpu.IncrementPC
+func int_call_push_lo(cpu *Cpu) {
+  cpu.SP.dec()
+  var newPC uint16
+  if cpu.IncrementPC || !cpu.IncrementPC {
+    newPC = cpu.PC.read() + uint16(cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes)
+  } else {
+    newPC = cpu.PC.read()
+  }
+  cpu.Bus.WriteToBus(cpu.SP.read(), uint8(newPC & 0xFF))
+}
+
 func call_push_hi(cpu *Cpu) {
   cpu.SP.dec()
   // return to _next_ instruction
@@ -323,7 +352,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y4"] = Instruction{
     "LD [0xFF00+u8], A",
     2,
-    []func(*Cpu){no_op, no_op, x3z0y4_2},
+    []func(*Cpu){no_op, x3z0y4_2, no_op},
   }
 
   x3z5q0_2 := func (cpu *Cpu) {
@@ -506,7 +535,7 @@ func MakeInstructionMap() map[string]Instruction {
   instructionMap["X3Z0Y6"] = Instruction{
     "LD A, [0xFF00+n]",
     2,
-    []func(*Cpu){no_op, no_op, x3z0y6_2},
+    []func(*Cpu){no_op, x3z0y6_2, no_op},
   }
 
   x0z5_1 := func(cpu *Cpu) {
@@ -618,6 +647,7 @@ func MakeInstructionMap() map[string]Instruction {
     if (cond) {
       // will this break shit? def. feels like
       // crossing an encapsulation boundary at least
+      //fmt.Printf("RET CC[%d] happening\n", cpu.CurrentOpcode.Y)
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(ret)
@@ -933,8 +963,6 @@ func MakeInstructionMap() map[string]Instruction {
   }
 
   // https://blog.ollien.com/posts/gb-daa/
-  // TODO: still some issues, maybe with H already set?
-  // also do i need to do subtraction??
   x0z7y4_1 := func(cpu *Cpu) {
     a := cpu.A.read()
     halfCarry := false

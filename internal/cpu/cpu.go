@@ -365,10 +365,17 @@ func (cpu *Cpu) DoInterrupts() {
       // 5 cycles: 2 no_op, push PC to stack, set PC to hardcoded address
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
-      cpu.ExecutionQueue.Push(call_push_hi)
-      cpu.ExecutionQueue.Push(call_push_lo)
+      cpu.ExecutionQueue.Push(int_call_push_hi)
+      cpu.ExecutionQueue.Push(int_call_push_lo)
       cpu.ExecutionQueue.Push(jumpFunctions[index])
       cpu.IncrementPC = false
+      //fmt.Printf("interrupt %d PC %04X SP %04X OC %02X Stack %02X %02X %02X %02X EQ %v\n", index, cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode.Full,
+      //  cpu.Bus.ReadFromBus(cpu.SP.read()),
+      //  cpu.Bus.ReadFromBus(cpu.SP.read()+1),
+      //  cpu.Bus.ReadFromBus(cpu.SP.read()+2),
+      //  cpu.Bus.ReadFromBus(cpu.SP.read()+3),
+      //  cpu.ExecutionQueue,
+      //  )
       return
     }
   }

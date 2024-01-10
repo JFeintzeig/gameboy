@@ -16,6 +16,9 @@ test_instr_timing: app
 test_mem_timing: app
 	./scripts/run_test_roms.sh ~/projects/2023/gameboy_resources/gb-test-roms/mem_timing/individual/
 
+test_mem_timing2: app
+	./scripts/run_test_roms.sh ~/projects/2023/gameboy_resources/gb-test-roms/mem_timing-2/rom_singles/
+
 test_other: app
 	./scripts/run_other_tests.sh
 
