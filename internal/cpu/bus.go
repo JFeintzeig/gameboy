@@ -41,6 +41,7 @@ type Mediator interface {
 type Bus struct {
   memory [64*1024]Register8
   wram [8*1024]Register8
+  hram [0x7F]Register8
   ppu *Ppu
   timers *Timers
   joypad *Joypad
@@ -100,10 +101,12 @@ func (bus *Bus) ReadFromBus(address uint16) uint8 {
       return bus.joypad.read()
     case address == DMA:
       return uint8(bus.dmaStartAddress >> 8)
-    case address == IE:
-      return bus.rIE.read()
     case address == IF:
       return bus.rIF.read()
+    case address >= 0xFF80 && address <= 0xFFFE:
+      return bus.hram[address - 0xFF80].read()
+    case address == IE:
+      return bus.rIE.read()
     default:
       return bus.memory[address].read()
   }
@@ -148,10 +151,12 @@ func (bus *Bus) WriteToBus(address uint16, value uint8) {
       bus.dmaCounter = 0
       bus.dmaStartAddress = uint16(value) << 8
       bus.dmaInProgress = true
-    case address == IE:
-      bus.rIE.write(value)
     case address == IF:
       bus.rIF.write(value)
+    case address >= 0xFF80 && address <= 0xFFFE:
+      bus.hram[address - 0xFF80].write(value)
+    case address == IE:
+      bus.rIE.write(value)
     default:
       bus.memory[address].write(value)
   }
