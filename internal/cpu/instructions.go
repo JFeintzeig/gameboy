@@ -568,7 +568,8 @@ func MakeInstructionMap() map[string]Instruction {
       val = reg.read()
     } else {
       memAtHL := cpu.Bus.ReadFromBus(cpu.HL.read())
-      cpu.Bus.WriteToBus(cpu.HL.read(), memAtHL - 1)
+      val = memAtHL - 1
+      cpu.Bus.WriteToBus(cpu.HL.read(), val)
 
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
@@ -604,7 +605,8 @@ func MakeInstructionMap() map[string]Instruction {
       val = reg.read()
     } else {
       memAtHL := cpu.Bus.ReadFromBus(cpu.HL.read())
-      cpu.Bus.WriteToBus(cpu.HL.read(), memAtHL + 1)
+      val = memAtHL + 1
+      cpu.Bus.WriteToBus(cpu.HL.read(), val)
       cpu.ExecutionQueue.Push(no_op)
       cpu.ExecutionQueue.Push(no_op)
     }
