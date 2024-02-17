@@ -293,15 +293,6 @@ func (cpu *Cpu) FetchAndDecode() {
     // and is also set to `false` by some instructions which set the PC
     // internally, e.g. `call`
     // if isHalted, we don't increment PC, so we keep executing the HALT instr
-    if cpu.IncrementPC && !cpu.isHalted {
-      // lookup nBytes
-      nBytes := cpu.OpcodeToInstruction(cpu.CurrentOpcode).nBytes
-      for i := uint8(0); i < nBytes; i++ {
-        cpu.PC.inc()
-      }
-    }
-    cpu.IncrementPC = true
-
     oc := ByteToOpcode(cpu.Bus.ReadFromBus(cpu.PC.read()), false)
 
     if oc.Full == 0xCB {
@@ -368,7 +359,6 @@ func (cpu *Cpu) DoInterrupts() {
       cpu.ExecutionQueue.Push(int_call_push_hi)
       cpu.ExecutionQueue.Push(int_call_push_lo)
       cpu.ExecutionQueue.Push(jumpFunctions[index])
-      cpu.IncrementPC = false
       //fmt.Printf("interrupt %d PC %04X SP %04X OC %02X Stack %02X %02X %02X %02X EQ %v\n", index, cpu.PC.read(), cpu.SP.read(), cpu.CurrentOpcode.Full,
       //  cpu.Bus.ReadFromBus(cpu.SP.read()),
       //  cpu.Bus.ReadFromBus(cpu.SP.read()+1),
@@ -386,6 +376,8 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
   var loopsPerFrame uint64 = cpu.ClockSpeed / 60
   timePerFrame := time.Duration(16.74 * 1e6)
   start := time.Now()
+
+  startLogging := false
 
   for {
     cpu.DoInterrupts()
@@ -411,6 +403,25 @@ func (cpu *Cpu) Execute(forever bool, nCyles uint64) {
     if cpu.ExecutionQueue.Length() < 1 {
         cpu.SetIME()
         cpu.FetchAndDecode()
+        //if cpu.CurrentOpcode.Full == 0xC5 {
+        //  startLogging = true
+        //}
+        if cpu.PC.read() == 0x4879 {
+          startLogging = false
+        }
+        if startLogging {
+        fmt.Printf("PC %04X %s SP %04X OC %02X Stack: %02X %02X %02X %02X %02X %02X %02X %02X\n",
+          cpu.PC.read(), cpu.OpcodeToInstruction(cpu.CurrentOpcode).name, cpu.SP.read(), cpu.CurrentOpcode.Full,
+          cpu.Bus.ReadFromBus(cpu.SP.read()),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+1),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+2),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+3),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+4),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+5),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+6),
+          cpu.Bus.ReadFromBus(cpu.SP.read()+7),
+          )
+        }
     }
 
     if !forever && cpu.globalCounter == nCyles {
@@ -464,8 +475,6 @@ type Cpu struct {
   ExecutionQueue Fifo[func(*Cpu)]
 
   Bus *Bus
-
-  IncrementPC bool
 
   // Interrupts, maybe encapsulate this in a handler
   IMECountdown int8
@@ -628,7 +637,6 @@ func NewGameBoy(romFilePath *string, useBootRom bool, fast bool) *Cpu {
   bus := NewBus(*romFilePath, useBootRom)
   gb.Bus = bus
 
-  gb.IncrementPC = false
   gb.fast = fast
 
   if !useBootRom {
